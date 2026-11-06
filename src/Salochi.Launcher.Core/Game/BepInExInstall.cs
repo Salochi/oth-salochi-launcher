@@ -24,31 +24,86 @@ public static class BepInExInstall
     }
 
     /// <summary>
-    /// Downloads the manifest's BepInEx zip into the store, checks its hash, and unpacks it into the game folder. An
-    /// existing doorstop_config.ini is kept (it may hold the player's vanilla setting). Entries that would land outside
-    /// the game folder are refused.
+    /// Downloads the manifest's BepInEx zip into the store, checks its hash, and installs it into the game folder (see
+    /// <see cref="Extract"/>). Returns the folder the replaced files were backed up to, or null when nothing was replaced.
     /// </summary>
-    public static async Task InstallAsync(GameLocation game, Manifest manifest, string storeRoot, HttpClient http, IProgress<double>? progress, CancellationToken ct)
+    public static async Task<string?> InstallAsync(GameLocation game, Manifest manifest, string storeRoot, HttpClient http, IProgress<double>? progress, CancellationToken ct)
     {
         var entry = manifest.BepInEx ?? throw new ManifestException("the manifest doesn't say which BepInEx to install");
         string zip = Path.Combine(storeRoot, "bepinex", $"BepInEx-{entry.Version}.zip");
         if (!File.Exists(zip) || !string.Equals(FileUtil.Sha256(zip), entry.Sha256, StringComparison.OrdinalIgnoreCase))
             await ModStore.DownloadVerifiedAsync(http, manifest.ResolveUrl(entry.Url, "bepinex"), zip, entry.Sha256, entry.Size, progress, ct);
-        Extract(zip, game.Root);
+        return Extract(zip, game.Root, DateTime.Now);
     }
 
-    internal static void Extract(string zipPath, string gameRoot)
+    /// <summary>
+    /// Installs the zip into the game folder, all or nothing. It's unpacked into a staging folder first (entries that
+    /// would land outside the game folder are refused), so a damaged zip or a full disk changes nothing. Then every file
+    /// it would replace (another loader's winhttp.dll, an older BepInEx) is moved to salochi-loader-backup/&lt;time&gt;/
+    /// and the new files moved in; if that fails part way, the backup is put back. An existing doorstop_config.ini is
+    /// kept: it holds the player's with/without mods choice. Returns the backup folder, or null when nothing was replaced.
+    /// </summary>
+    internal static string? Extract(string zipPath, string gameRoot, DateTime now)
     {
         string root = Path.GetFullPath(gameRoot) + Path.DirectorySeparatorChar;
-        using var archive = ZipFile.OpenRead(zipPath);
-        foreach (var e in archive.Entries)
+        string staging = Path.Combine(root, ".salochi-loader-staging");
+        string backup = Path.Combine(root, "salochi-loader-backup", now.ToString("yyyyMMdd-HHmmss"));
+        if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+
+        var files = new List<string>(); // relative paths
+        try
         {
-            string dest = Path.GetFullPath(Path.Combine(root, e.FullName));
-            if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException($"the BepInEx zip has an entry outside the game folder: {e.FullName}");
-            if (e.FullName.EndsWith('/')) { Directory.CreateDirectory(dest); continue; }
-            if (e.Name.Equals(DoorstopConfig.FileName, StringComparison.OrdinalIgnoreCase) && File.Exists(dest)) continue;
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            e.ExtractToFile(dest, overwrite: true);
+            using (var archive = ZipFile.OpenRead(zipPath))
+            {
+                foreach (var e in archive.Entries)
+                {
+                    string dest = Path.GetFullPath(Path.Combine(root, e.FullName));
+                    if (!dest.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException($"the BepInEx zip has an entry outside the game folder: {e.FullName}");
+                    if (e.FullName.EndsWith('/')) continue;
+                    string rel = Path.GetRelativePath(root, dest);
+                    if (rel.Equals(DoorstopConfig.FileName, StringComparison.OrdinalIgnoreCase) && File.Exists(dest)) continue;
+                    string to = Path.Combine(staging, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                    e.ExtractToFile(to);
+                    files.Add(rel);
+                }
+            }
+
+            var moved = new List<string>();
+            var placed = new List<string>();
+            try
+            {
+                foreach (var rel in files)
+                {
+                    string dest = Path.Combine(root, rel);
+                    if (!File.Exists(dest)) continue;
+                    string to = Path.Combine(backup, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                    File.Move(dest, to);
+                    moved.Add(rel);
+                }
+                foreach (var rel in files)
+                {
+                    string dest = Path.Combine(root, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.Move(Path.Combine(staging, rel), dest);
+                    placed.Add(rel);
+                }
+            }
+            catch
+            {
+                foreach (var rel in placed) { try { File.Delete(Path.Combine(root, rel)); } catch (IOException) { } }
+                foreach (var rel in moved) { try { File.Move(Path.Combine(backup, rel), Path.Combine(root, rel), overwrite: true); } catch (IOException) { } }
+                throw;
+            }
+            if (moved.Count == 0) return null;
+            LauncherLog.Info($"installing BepInEx replaced {moved.Count} file(s), backed up to {backup}: {string.Join(", ", moved.Take(10))}");
+            return backup;
+        }
+        finally
+        {
+            try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
+            catch (IOException) { /* removed next time */ }
         }
     }
 }

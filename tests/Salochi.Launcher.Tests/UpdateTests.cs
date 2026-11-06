@@ -93,10 +93,44 @@ public sealed class UpdateTests : IDisposable
         File.WriteAllText(exe + SelfUpdater.OldSuffix, "v1");
         File.WriteAllText(exe + SelfUpdater.OldSuffix + "-1", "v0");
         File.WriteAllText(Path.Combine(_dir, "SalochiLauncher.exe.older.txt"), "not ours");
+        File.WriteAllText(exe + ".old-before-upgrade", "the player's own copy");
         await SelfUpdater.CleanUpAsync(exe);
         Assert.False(File.Exists(exe + SelfUpdater.OldSuffix));
         Assert.False(File.Exists(exe + SelfUpdater.OldSuffix + "-1"));
         Assert.True(File.Exists(Path.Combine(_dir, "SalochiLauncher.exe.older.txt")));
+        Assert.True(File.Exists(exe + ".old-before-upgrade")); // only names the updater makes
+    }
+
+    [Fact]
+    public void FinishUpdate_OnlyReplacesASalochiLauncher()
+    {
+        string self = Path.Combine(_dir, "new", "SalochiLauncher.exe");
+        string notes = Path.Combine(_dir, "notes.txt"), fake = Path.Combine(_dir, "Other.exe");
+        File.WriteAllText(notes, "keep me");
+        File.WriteAllText(fake, "not a launcher");
+
+        Assert.NotNull(SelfUpdater.TargetProblem("relative\\SalochiLauncher.exe", self));
+        Assert.NotNull(SelfUpdater.TargetProblem(notes, self));
+        Assert.NotNull(SelfUpdater.TargetProblem(fake, self));      // no "Salochi Launcher" version resource
+        Assert.NotNull(SelfUpdater.TargetProblem(Path.Combine(_dir, "missing.exe"), self));
+
+        // a crafted --finish-update does nothing at all
+        Assert.True(SelfUpdater.TryFinishUpdate(["--finish-update", notes]));
+        Assert.Equal("keep me", File.ReadAllText(notes));
+        Assert.False(File.Exists(notes + SelfUpdater.OldSuffix));
+    }
+
+    [Fact]
+    public void Restore_PutsTheOldExeBack()
+    {
+        string exe = Path.Combine(_dir, "SalochiLauncher.exe"), fresh = Path.Combine(_dir, "new.exe");
+        File.WriteAllText(exe, "v1");
+        File.WriteAllText(fresh, "v2");
+        SelfUpdater.Swap(exe, fresh);
+        Assert.Equal("v2", File.ReadAllText(exe));
+        SelfUpdater.Restore(exe);
+        Assert.Equal("v1", File.ReadAllText(exe));
+        Assert.False(File.Exists(exe + SelfUpdater.OldSuffix));
     }
 
     [Fact]

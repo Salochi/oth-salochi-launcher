@@ -77,8 +77,67 @@ public sealed class ModTests : IDisposable
         Assert.Equal(["OTH.Accessories.dll"], plan.Remove);
         PluginSync.Apply(target, plan, e => Path.Combine(store, e.File));
 
-        Assert.Equal(["OTH.BajaBug.dll", "OTH.Core.dll", "OTH.Tacoma.dll"], Directory.GetFiles(target).Select(Path.GetFileName).Order());
+        Assert.Equal(["OTH.BajaBug.dll", "OTH.Core.dll", "OTH.Tacoma.dll"], Directory.GetFiles(target, "*.dll").Select(Path.GetFileName).Order());
+        Assert.Equal(["OTH.BajaBug.dll", "OTH.Core.dll"], PluginSync.ReadReceipt(target));
         Assert.True(PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"]), m.Mods).IsEmpty);
+        Assert.False(Directory.Exists(Path.Combine(_dir, "salochi-moved")) && Directory.EnumerateFiles(Path.Combine(_dir, "salochi-moved"), "*", SearchOption.AllDirectories).Any());
+    }
+
+    [Fact]
+    public void Sync_RemovesAModALaterReleaseDropped()
+    {
+        string store = Path.Combine(_dir, "store"), target = Path.Combine(_dir, "plugins", "Salochi");
+        Directory.CreateDirectory(store);
+        File.WriteAllText(Path.Combine(store, "OTH.OldCar.dll"), "old");
+        File.WriteAllText(Path.Combine(store, "OTH.NewCar.dll"), "new");
+        var old = new ModEntry { Id = "oldcar", File = "OTH.OldCar.dll", Sha256 = Sha("old") };
+        var renamed = new ModEntry { Id = "newcar", File = "OTH.NewCar.dll", Sha256 = Sha("new") };
+        PluginSync.Apply(target, PluginSync.Plan(target, [old], [old]), e => Path.Combine(store, e.File));
+
+        // the next release lists only the renamed one: the old DLL is still in the receipt, so it goes
+        var plan = PluginSync.Plan(target, [renamed], [renamed]);
+        Assert.Equal(["OTH.OldCar.dll"], plan.Remove);
+        PluginSync.Apply(target, plan, e => Path.Combine(store, e.File));
+        Assert.Equal(["OTH.NewCar.dll"], Directory.GetFiles(target, "*.dll").Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void Sync_ChangesNothingWhenACopyFails()
+    {
+        var m = Manifest.Parse(ManifestJson(), Release);
+        string store = Path.Combine(_dir, "store"), target = Path.Combine(_dir, "plugins", "Salochi");
+        Directory.CreateDirectory(store);
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(store, "OTH.Core.dll"), "core");           // BajaBug's store copy is missing
+        File.WriteAllText(Path.Combine(target, "OTH.Core.dll"), "core v0");
+        File.WriteAllText(Path.Combine(target, "OTH.Accessories.dll"), "acc");
+
+        var plan = PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"]), m.Mods);
+        Assert.ThrowsAny<IOException>(() => PluginSync.Apply(target, plan, e => Path.Combine(store, e.File)));
+
+        Assert.Equal("core v0", File.ReadAllText(Path.Combine(target, "OTH.Core.dll")));   // not replaced
+        Assert.Equal("acc", File.ReadAllText(Path.Combine(target, "OTH.Accessories.dll"))); // not removed
+        Assert.Equal(["OTH.Accessories.dll", "OTH.Core.dll"], Directory.GetFiles(target).Select(Path.GetFileName).Order());
+    }
+
+    [Fact]
+    public void Sync_DropsCoreQueuedChangesForTheSameFiles()
+    {
+        var m = Manifest.Parse(ManifestJson(), Release);
+        string store = Path.Combine(_dir, "store"), target = Path.Combine(_dir, "plugins", "Salochi"), pending = Path.Combine(target, ".pending");
+        Directory.CreateDirectory(store);
+        Directory.CreateDirectory(pending);
+        File.WriteAllText(Path.Combine(store, "OTH.Core.dll"), "core");
+        File.WriteAllText(Path.Combine(pending, "OTH.Core.dll.new"), "core from the in-game installer");
+        File.WriteAllText(Path.Combine(pending, "actions.json"),
+            """{ "actions": [ { "kind": "replace", "file": "OTH.Core.dll" }, { "kind": "disable", "file": "Other/Other.dll" } ] }""");
+
+        PluginSync.Apply(target, PluginSync.Plan(target, PluginSync.Resolve(m, []), m.Mods), e => Path.Combine(store, e.File));
+
+        Assert.False(File.Exists(Path.Combine(pending, "OTH.Core.dll.new")));
+        string queue = File.ReadAllText(Path.Combine(pending, "actions.json"));
+        Assert.DoesNotContain("OTH.Core.dll", queue);
+        Assert.Contains("Other/Other.dll", queue); // another creator's rename stays
     }
 
     [Fact]

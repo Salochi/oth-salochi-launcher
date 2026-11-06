@@ -58,8 +58,8 @@
             </Grid>
         </Border>
 
-        <!-- pages -->
-        <Panel Grid.Row="1">
+        <!-- pages (off while an operation runs: nothing may change the picks or the folder under it) -->
+        <Panel Grid.Row="1" IsEnabled="{Binding IsIdle}">
 
             <!-- Cars -->
             <ScrollViewer IsVisible="{Binding IsCars}" Padding="32,24,16,8">

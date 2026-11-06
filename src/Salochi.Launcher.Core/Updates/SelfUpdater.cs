@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Salochi.Launcher.Core.Mods;
 
 namespace Salochi.Launcher.Core.Updates;
@@ -20,6 +21,9 @@ public static class SelfUpdater
     public const string WaitPidArg = "--wait-pid";
     public const string UpdatedFromArg = "--updated-from";
     public const string UpdateFailedArg = "--update-failed";
+    /// <summary>The product name in the launcher exe's version resource (Directory.Build.props).</summary>
+    public const string ProductName = "Salochi Launcher";
+    private const string NewSuffix = ".new";
 
     /// <summary>
     /// The exe to replace, or null when this isn't a published single-file build (running from a build folder or
@@ -60,45 +64,96 @@ public static class SelfUpdater
         if (i < 0 || i + 1 >= args.Length) return false;
         string target = args[i + 1];
         string? self = Environment.ProcessPath;
+        // Only ever replace a Salochi Launcher: a shortcut with a crafted --finish-update must not overwrite other files.
+        string? refusal = TargetProblem(target, self);
+        if (refusal != null)
+        {
+            log?.Invoke($"refused --finish-update {target}: {refusal}");
+            return true; // do nothing at all, and show no window
+        }
         var rest = WithoutUpdateArgs(args, keepUpdatedFrom: true).ToList();
+        bool swapped = false;
         try
         {
-            if (self == null) throw new InvalidOperationException("the new launcher can't tell where it is");
             int w = Array.IndexOf(args, WaitPidArg);
-            if (w >= 0 && w + 1 < args.Length && int.TryParse(args[w + 1], out int pid)) WaitForExit(pid);
-            Swap(target, self);
+            if (w >= 0 && w + 1 < args.Length && int.TryParse(args[w + 1], out int pid)) WaitForExit(pid, target);
+            Swap(target, self!);
+            swapped = true;
             log?.Invoke($"finished the update of {target}");
+            Start(target, rest);
+            return true;
         }
         catch (Exception e)
         {
-            // Start the old launcher anyway, and tell it the update failed so it doesn't try again this run.
             log?.Invoke($"couldn't finish the update of {target}: {e}");
+            // the new build won't start: put the old one back before starting it
+            if (swapped)
+            {
+                try { Restore(target); }
+                catch (Exception r) { log?.Invoke($"couldn't put the old launcher back: {r}"); }
+            }
+            // Start the old launcher, and tell it the update failed so it doesn't try again this run.
             rest = rest.Where((a, k) => a != UpdatedFromArg && (k == 0 || rest[k - 1] != UpdatedFromArg)).ToList();
             rest.AddRange([UpdateFailedArg, string.IsNullOrWhiteSpace(e.Message) ? e.GetType().Name : e.Message]);
+            try { Start(target, rest); }
+            catch (Exception s2) { log?.Invoke($"couldn't start {target}: {s2}"); }
+            return true;
         }
-        Start(target, rest);
-        return true;
+    }
+
+    /// <summary>Why <paramref name="target"/> can't be the exe an update replaces, or null when it can: an absolute
+    /// path to an existing .exe whose version resource says Salochi Launcher, and not the running exe itself.</summary>
+    internal static string? TargetProblem(string target, string? self)
+    {
+        if (self == null) return "the new launcher can't tell where it is";
+        if (!Path.IsPathFullyQualified(target)) return "not an absolute path";
+        if (!target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return "not an .exe";
+        if (!File.Exists(target)) return "no such file";
+        if (string.Equals(Path.GetFullPath(target), Path.GetFullPath(self), StringComparison.OrdinalIgnoreCase)) return "that's this exe";
+        string? product;
+        try { product = FileVersionInfo.GetVersionInfo(target).ProductName; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return "unreadable"; }
+        return product == ProductName ? null : $"not a Salochi Launcher (product \"{product}\")";
     }
 
     /// <summary>
     /// Puts <paramref name="newExe"/> in place of <paramref name="currentExe"/>, keeping the old one as
-    /// <c>&lt;exe&gt;.old</c> (or <c>.old-&lt;n&gt;</c> when an earlier one is still locked). If the copy fails, the old exe
-    /// gets its name back.
+    /// <c>&lt;exe&gt;.old</c> (or <c>.old-&lt;n&gt;</c> when an earlier one is still locked). The new exe is first copied
+    /// next to the old one and checked, so the swap itself is two renames on one disk: an interruption never leaves a
+    /// half-copied launcher under the real name. If the second rename fails, the old exe gets its name back.
     /// </summary>
     public static void Swap(string currentExe, string newExe)
     {
+        string fresh = currentExe + NewSuffix;
+        File.Copy(newExe, fresh, overwrite: true);
+        if (new FileInfo(fresh).Length != new FileInfo(newExe).Length || FileUtil.Sha256(fresh) != FileUtil.Sha256(newExe))
+        {
+            File.Delete(fresh);
+            throw new IOException("the copy of the new launcher doesn't match the download");
+        }
         string old = FreeOldName(currentExe);
         File.Move(currentExe, old);
         try
         {
-            File.Copy(newExe, currentExe);
+            File.Move(fresh, currentExe);
         }
         catch
         {
-            if (File.Exists(currentExe)) File.Delete(currentExe);
             File.Move(old, currentExe);
+            try { File.Delete(fresh); } catch (IOException) { }
             throw;
         }
+        File.WriteAllText(currentExe + ".previous", old); // where Restore finds it, if the new one won't start
+    }
+
+    /// <summary>Puts the exe <see cref="Swap"/> set aside back under its name (the new one is deleted).</summary>
+    public static void Restore(string currentExe)
+    {
+        string note = currentExe + ".previous";
+        string old = File.Exists(note) ? File.ReadAllText(note).Trim() : currentExe + OldSuffix;
+        if (!File.Exists(old)) throw new FileNotFoundException("the old launcher isn't there any more", old);
+        File.Move(old, currentExe, overwrite: true);
+        File.Delete(note);
     }
 
     /// <summary>A name to move the old exe to: &lt;exe&gt;.old, deleting an earlier one; when that one can't go (a
@@ -122,8 +177,10 @@ public static class SelfUpdater
     public static async Task CleanUpAsync(string currentExe)
     {
         string dir = Path.GetDirectoryName(currentExe)!;
-        string name = Path.GetFileName(currentExe) + OldSuffix;
-        foreach (var old in Directory.EnumerateFiles(dir, name + "*").Where(f => Path.GetFileName(f) == name || Path.GetFileName(f).StartsWith(name + "-")).ToList())
+        string name = Path.GetFileName(currentExe);
+        // only what Swap makes: <exe>.old, <exe>.old-<n>, <exe>.new, <exe>.previous
+        var ours = new Regex("^" + Regex.Escape(name) + @"(\.old(-\d+)?|\.new|\.previous)$", RegexOptions.IgnoreCase);
+        foreach (var old in Directory.EnumerateFiles(dir, name + ".*").Where(f => ours.IsMatch(Path.GetFileName(f))).ToList())
         {
             for (int i = 0; i < 10 && File.Exists(old); i++)
             {
@@ -146,11 +203,16 @@ public static class SelfUpdater
         }
     }
 
-    private static void WaitForExit(int pid)
+    /// <summary>Waits for the old launcher to exit. A process with that id that isn't running the target exe is some
+    /// other program that got the id after the launcher exited: nothing to wait for.</summary>
+    private static void WaitForExit(int pid, string target)
     {
         try
         {
             using var p = Process.GetProcessById(pid);
+            string? path = null;
+            try { path = p.MainModule?.FileName; } catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+            if (path != null && !string.Equals(Path.GetFullPath(path), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) return;
             if (!p.WaitForExit(TimeSpan.FromSeconds(30))) throw new TimeoutException("the old launcher didn't close within 30 seconds");
         }
         catch (ArgumentException) { /* already gone */ }

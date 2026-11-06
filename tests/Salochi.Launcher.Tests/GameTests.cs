@@ -63,6 +63,61 @@ public class GameTests
     }
 
     [Fact]
+    public void LoaderInstall_BacksUpWhatItReplacesAndKeepsTheDoorstopChoice()
+    {
+        string dir = Directory.CreateTempSubdirectory("salochi-loader-").FullName;
+        try
+        {
+            string game = Path.Combine(dir, "game"), zip = Path.Combine(dir, "bepinex.zip");
+            Directory.CreateDirectory(game);
+            File.WriteAllText(Path.Combine(game, "winhttp.dll"), "another loader");
+            File.WriteAllText(Path.Combine(game, "doorstop_config.ini"), "[General]\nenabled = false\n");
+            using (var z = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                Add(z, "winhttp.dll", "doorstop");
+                Add(z, "doorstop_config.ini", "[General]\nenabled = true\n");
+                Add(z, "BepInEx/core/BepInEx.Unity.IL2CPP.dll", "bepinex");
+            }
+
+            string? backup = BepInExInstall.Extract(zip, game, new DateTime(2026, 11, 6, 12, 0, 0));
+
+            Assert.Equal("doorstop", File.ReadAllText(Path.Combine(game, "winhttp.dll")));
+            Assert.Equal("another loader", File.ReadAllText(Path.Combine(backup!, "winhttp.dll")));
+            Assert.False(DoorstopConfig.Read(game)); // the player's choice stays
+            Assert.True(File.Exists(Path.Combine(game, "BepInEx", "core", "BepInEx.Unity.IL2CPP.dll")));
+            Assert.False(Directory.Exists(Path.Combine(game, ".salochi-loader-staging")));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void LoaderInstall_RefusesEntriesOutsideTheGameAndChangesNothing()
+    {
+        string dir = Directory.CreateTempSubdirectory("salochi-loader-").FullName;
+        try
+        {
+            string game = Path.Combine(dir, "game"), zip = Path.Combine(dir, "bad.zip");
+            Directory.CreateDirectory(game);
+            File.WriteAllText(Path.Combine(game, "winhttp.dll"), "mine");
+            using (var z = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                Add(z, "winhttp.dll", "theirs");
+                Add(z, "../escape.dll", "x");
+            }
+            Assert.Throws<IOException>(() => BepInExInstall.Extract(zip, game, DateTime.Now));
+            Assert.Equal("mine", File.ReadAllText(Path.Combine(game, "winhttp.dll")));
+            Assert.False(File.Exists(Path.Combine(dir, "escape.dll")));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    private static void Add(System.IO.Compression.ZipArchive z, string name, string text)
+    {
+        using var w = new StreamWriter(z.CreateEntry(name).Open());
+        w.Write(text);
+    }
+
+    [Fact]
     public void Doorstop_AddsMissingKey()
     {
         Assert.Null(DoorstopConfig.ReadEnabled("[General]\ntarget_assembly = x\n"));

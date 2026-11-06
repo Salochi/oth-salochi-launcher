@@ -31,6 +31,9 @@ public partial class MainViewModel : ViewModelBase
     private ProblemViewModel? _listProblem;
     private LauncherRelease? _launcherRelease;
     private bool _selfUpdateTried;
+    /// <summary>An operation is running (refresh, play, update, move aside): every other one waits its turn, so nothing
+    /// changes the game folder or the picks halfway through another.</summary>
+    private bool _running;
     private static readonly Version Current = LauncherRelease.Normalize(typeof(MainViewModel).Assembly.GetName().Version ?? new Version(0, 0));
 
     public MainViewModel() : this(null) { }
@@ -130,7 +133,7 @@ public partial class MainViewModel : ViewModelBase
             _settings.AutoUpdateMods = value;
             _settings.Save();
             OnPropertyChanged();
-            BuildModList(); // the tiles' "Version x is available" / "Updates when you play"
+            BuildModList(fromFolder: false); // the tiles' "Version x is available" / "Updates when you play"
             _ = LoadImagesAsync();
             UpdateState();
         }
@@ -173,18 +176,21 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        if (_running) return;
+        _running = true;
         IsBusy = true;
         StatusText = "Checking the game and the mod list…";
         Problems.Clear();
         _issues = [];
         _listProblem = null;
+        UpdateState();
         try
         {
             _game = LocateGame();
             _manifest = await LoadManifestAsync();
             if (await CheckLauncherAsync()) return; // restarting into the new version
             ListLoaded = _manifest != null;
-            BuildModList();
+            BuildModList(fromFolder: true);
             DescribeGame();
             if (_settings.AutoUpdateMods) await UpdateModsQuietlyAsync();
             DescribeModUpdates();
@@ -197,6 +203,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            _running = false;
             IsBusy = false;
             StatusText = "";
             UpdateState();
@@ -255,12 +262,13 @@ public partial class MainViewModel : ViewModelBase
         string? local = _manifestArg ?? _settings.ManifestOverride;
         if (local != null)
         {
-            // next to a local manifest, when one was made with it
+            // next to a local manifest, when one was made with it. Always signed: a local mod list may be unsigned
+            // for testing, but the launcher only ever runs a new exe the release key vouches for.
             string path = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(local))!, "launcher.json");
             if (!File.Exists(path)) return null;
             byte[] bytes = await File.ReadAllBytesAsync(path);
-            if (File.Exists(path + ".sig") && !ReleaseKey.Verify(bytes, await File.ReadAllTextAsync(path + ".sig")))
-                throw new ManifestException("launcher.json doesn't match its signature");
+            if (!File.Exists(path + ".sig") || !ReleaseKey.Verify(bytes, await File.ReadAllTextAsync(path + ".sig")))
+                throw new ManifestException("launcher.json next to the local mod list isn't signed by Salochi, so it's ignored");
             return LauncherRelease.Parse(System.Text.Encoding.UTF8.GetString(bytes), new Uri(path));
         }
         using var resp = await Http.GetAsync(LauncherUrl);
@@ -275,12 +283,15 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task UpdateLauncherAsync()
     {
+        if (_running) return;
+        _running = true;
         Message = null;
         IsBusy = true;
         UpdateState();
         try { await InstallLauncherUpdateAsync(); }
         finally
         {
+            _running = false;
             IsBusy = false;
             StatusText = "";
             UpdateState();
@@ -327,13 +338,13 @@ public partial class MainViewModel : ViewModelBase
     private async Task UpdateModsQuietlyAsync()
     {
         string? target = OurFolder();
-        if (_manifest == null || target == null || !Directory.Exists(target)) return;
+        if (_manifest == null || _game == null || target == null || !Directory.Exists(target)) return;
         if (Problems.Any(p => p.Blocks) || GameProcess.IsRunning()) return;
         var outdated = PluginSync.Outdated(_manifest, target);
         if (outdated.Count == 0) return;
         try
         {
-            await InstallUpdatesAsync(outdated);
+            await InstallUpdatesAsync(_game, _manifest, outdated);
             Say("Updated " + JoinNames(outdated.Select(m => $"{m.Name} to version {m.Version}")) + ".");
         }
         catch (Exception e) when (e is IOException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException or ManifestException)
@@ -341,30 +352,31 @@ public partial class MainViewModel : ViewModelBase
             LauncherLog.Error("mod updates", e);
             Say("Mod updates couldn't be installed: " + LauncherLog.Describe(e) + ". Play tries again.", error: true);
         }
-        BuildModList();
+        BuildModList(fromFolder: true);
     }
 
-    private async Task InstallUpdatesAsync(IReadOnlyList<ModEntry> mods)
+    private async Task InstallUpdatesAsync(GameLocation game, Manifest manifest, IReadOnlyList<ModEntry> mods)
     {
         var store = Store();
         for (int i = 0; i < mods.Count; i++)
         {
             StatusText = $"Updating {mods[i].Name}…";
             int n = i;
-            await store.EnsureAsync(_manifest!, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), CancellationToken.None);
+            await store.EnsureAsync(manifest, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), CancellationToken.None);
         }
-        string target = OurFolder()!;
+        string target = FolderOf(game);
         PluginSync.Apply(target, PluginSync.Plan(target, mods, mods), store.PathOf);
     }
 
     [RelayCommand]
     private async Task UpdateModsAsync()
     {
-        string? target = OurFolder();
-        if (_manifest == null || target == null || !EnsureClosed()) return;
-        var outdated = PluginSync.Outdated(_manifest, target);
+        if (_running || _manifest == null || _game == null || !EnsureClosed()) return;
+        var game = _game;
+        var manifest = _manifest;
+        var outdated = PluginSync.Outdated(manifest, FolderOf(game));
         string done = "Updated " + JoinNames(outdated.Select(m => $"{m.Name} to version {m.Version}")) + ".";
-        await RunAsync(_ => InstallUpdatesAsync(outdated), done, launches: false);
+        await RunAsync(_ => InstallUpdatesAsync(game, manifest, outdated), done, launches: false);
     }
 
     private void DescribeModUpdates()
@@ -429,22 +441,25 @@ public partial class MainViewModel : ViewModelBase
         return null;
     }
 
-    private void BuildModList()
+    /// <param name="fromFolder">True: the picks are read from the game folder (on loading, and after Play or an
+    /// update put them there; Core's in-game installer writes there too). False: the picks on screen are kept, so a
+    /// rebuild never drops a choice the player hasn't played with yet.</param>
+    private void BuildModList(bool fromFolder)
     {
+        var onScreen = AllMods().ToDictionary(m => m.Entry.Id, m => m.IsPicked, StringComparer.OrdinalIgnoreCase);
         Cars.Clear();
         Features.Clear();
         OnPropertyChanged(nameof(HasCars));
         OnPropertyChanged(nameof(HasFeatures));
         if (_manifest == null) return;
 
-        // The game folder is the record of what's picked: Core's in-game installer writes there too.
         string? target = OurFolder();
         var installed = target != null && Directory.Exists(target) ? PluginSync.InstalledIds(_manifest, target) : null;
         var store = Store();
         foreach (var mod in _manifest.Mods.Where(m => m.Kind != ModKind.Core))
         {
-            bool picked = installed != null
-                ? installed.Contains(mod.Id, StringComparer.OrdinalIgnoreCase)
+            bool picked = !fromFolder && onScreen.TryGetValue(mod.Id, out var kept) ? kept
+                : installed != null ? installed.Contains(mod.Id, StringComparer.OrdinalIgnoreCase)
                 : _settings.Picked == null || _settings.Picked.Contains(mod.Id, StringComparer.OrdinalIgnoreCase);
             var item = new ModItemViewModel(mod, picked, null);
             item.Status = StatusOf(item, store, target, _settings.AutoUpdateMods);
@@ -529,18 +544,23 @@ public partial class MainViewModel : ViewModelBase
                 $"These mods were tested on an earlier version of the game. They may not work until they're updated. If the game crashes, use Play without mods.",
                 blocks: false);
 
-        if (!BepInExInstall.IsInstalled(game))
+        LoaderState = !BepInExInstall.IsInstalled(game)
+            ? $"Not installed yet. Play installs BepInEx {_manifest?.BepInEx?.Version}".TrimEnd() + "."
+            : BepInExInstall.FirstStartPending(game)
+                ? "BepInEx is installed. Its first start takes a few minutes while it prepares the game, and the game may look frozen until the menu appears. Later starts are quick."
+                : "BepInEx is installed";
+
+        // Even without the loader: a half-finished manual install can already hold the original OverTheHillPlus.
+        try { _issues = ScanPlugins(game, _manifest); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            LoaderState = $"Not installed yet. Play installs BepInEx {_manifest?.BepInEx?.Version}".TrimEnd() + ".";
+            LauncherLog.Error("plugin scan", e);
+            _issues = [];
+            Problem("The plugins folder couldn't be checked",
+                $"{LauncherLog.Describe(e)}. Until the launcher can see what's in BepInEx\\plugins, it won't start the game with mods: another copy of Core there could crash it.",
+                blocks: true, "Check again", RefreshCommand);
             return;
         }
-        LoaderState = BepInExInstall.FirstStartPending(game)
-            ? "BepInEx is installed. Its first start takes a few minutes while it prepares the game, and the game may look frozen until the menu appears. Later starts are quick."
-            : "BepInEx is installed";
-
-        var ourHashes = new HashSet<string>(_manifest?.Mods.Select(m => m.Sha256) ?? [], StringComparer.OrdinalIgnoreCase);
-        var ourFiles = new HashSet<string>(_manifest?.Mods.Where(m => m.Kind != ModKind.Core).Select(m => m.File) ?? [], StringComparer.OrdinalIgnoreCase);
-        _issues = PluginScanner.Issues(PluginScanner.Scan(game.PluginsDir, ourHashes, ourFiles));
         foreach (var issue in _issues)
         {
             string files = string.Join(", ", issue.Files.Select(f => f.RelativePath));
@@ -566,27 +586,40 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private static IReadOnlyList<PluginIssue> ScanPlugins(GameLocation game, Manifest? manifest)
+    {
+        var ourHashes = new HashSet<string>(manifest?.Mods.Select(m => m.Sha256) ?? [], StringComparer.OrdinalIgnoreCase);
+        var ourFiles = new HashSet<string>(manifest?.Mods.Where(m => m.Kind != ModKind.Core).Select(m => m.File) ?? [], StringComparer.OrdinalIgnoreCase);
+        return PluginScanner.Issues(PluginScanner.Scan(game.PluginsDir, ourHashes, ourFiles));
+    }
+
     // ---------------------------------------------------------------- actions
 
     [RelayCommand(CanExecute = nameof(CanPlay))]
     private async Task PlayAsync()
     {
-        if (_game == null || _manifest == null || !EnsureClosed()) return;
+        if (_running || _game == null || _manifest == null || !EnsureClosed()) return;
+        // Everything Play works with, taken now: nothing the player does while it runs can change where it installs.
         var game = _game;
         var manifest = _manifest;
+        var mods = PluginSync.Resolve(manifest, AllMods().Where(m => m.IsPicked).Select(m => m.Entry.Id));
+        bool updateInstalled = _settings.AutoUpdateMods;
+        string target = FolderOf(game);
         // BepInEx's first start is slow; once it has prepared the game (BepInEx/interop) this note stops on its own
         bool firstStart = !BepInExInstall.IsInstalled(game) || BepInExInstall.FirstStartPending(game);
+        string? loaderBackup = null;
         await RunAsync(async ct =>
         {
             if (!BepInExInstall.IsInstalled(game))
             {
                 StatusText = "Installing the mod loader…";
-                await BepInExInstall.InstallAsync(game, manifest, LauncherSettings.DataDir, Http, new Progress<double>(p => Progress = p), ct);
+                loaderBackup = await BepInExInstall.InstallAsync(game, manifest, LauncherSettings.DataDir, Http, new Progress<double>(p => Progress = p), ct);
+                if (ScanPlugins(game, manifest).Any(i => PluginScanner.Blocks(i.Kind)))
+                    throw new InvalidOperationException("The mod loader is installed, but the plugins folder holds mods that clash with Salochi Core. See the Game page");
             }
 
-            var mods = PluginSync.Resolve(manifest, AllMods().Where(m => m.IsPicked).Select(m => m.Entry.Id));
             var store = Store();
-            var needed = PluginSync.Plan(OurFolder()!, mods, manifest.Mods, _settings.AutoUpdateMods).Install;
+            var needed = PluginSync.Plan(target, mods, manifest.Mods, updateInstalled).Install;
             for (int i = 0; i < mods.Count; i++)
             {
                 if (store.Has(mods[i]) || !needed.Contains(mods[i])) continue;
@@ -596,21 +629,21 @@ public partial class MainViewModel : ViewModelBase
             }
 
             StatusText = "Installing mods…";
-            string target = OurFolder()!;
-            PluginSync.Apply(target, PluginSync.Plan(target, mods, manifest.Mods, _settings.AutoUpdateMods), store.PathOf);
+            PluginSync.Apply(target, PluginSync.Plan(target, mods, manifest.Mods, updateInstalled), store.PathOf);
             DoorstopConfig.Write(game.Root, true);
 
             StatusText = "Starting Over The Hill…";
             if (!NoLaunch) GameProcess.LaunchThroughSteam();
-        }, done: firstStart
+        }, done: () => (firstStart
             ? "Over The Hill is starting with your mods. This first time, BepInEx prepares the game before the menu appears. It takes a few minutes and the game may look frozen: leave it running. Later starts are quick."
-            : "Over The Hill is starting with your mods.");
+            : "Over The Hill is starting with your mods.")
+            + (loaderBackup != null ? $" Files the mod loader replaced are backed up in {loaderBackup}." : ""));
     }
 
     [RelayCommand(CanExecute = nameof(CanPlayWithoutMods))]
     private async Task PlayWithoutModsAsync()
     {
-        if (_game == null || !EnsureClosed()) return;
+        if (_running || _game == null || !EnsureClosed()) return;
         var game = _game;
         await RunAsync(_ =>
         {
@@ -623,7 +656,7 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task MoveAsideAsync(PluginIssue issue)
     {
-        if (_game == null || !EnsureClosed()) return;
+        if (_running || _game == null || !EnsureClosed()) return;
         string backup;
         try { backup = PluginScanner.MoveAside(_game.BepInExDir, issue.Files, DateTime.Now); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -639,8 +672,9 @@ public partial class MainViewModel : ViewModelBase
     private async Task ChooseGameFolderAsync()
     {
         if (PickFolder == null) return;
+        if (_running) return;
         string? dir = await PickFolder("Pick the Over The Hill folder");
-        if (dir == null) return;
+        if (dir == null || _running) return;
         if (!File.Exists(Path.Combine(dir, GameLocation.ExeName)))
         {
             Say($"That folder doesn't have \"{GameLocation.ExeName}\" in it. Pick the folder the game is installed in.", error: true);
@@ -669,8 +703,13 @@ public partial class MainViewModel : ViewModelBase
 
     // ---------------------------------------------------------------- helpers
 
-    private async Task RunAsync(Func<CancellationToken, Task> work, string done, bool launches = true)
+    private Task RunAsync(Func<CancellationToken, Task> work, string done, bool launches = true) =>
+        RunAsync(work, () => done, launches);
+
+    private async Task RunAsync(Func<CancellationToken, Task> work, Func<string> done, bool launches = true)
     {
+        if (_running) return;
+        _running = true;
         Message = null;
         IsBusy = true;
         UpdateState();
@@ -692,13 +731,15 @@ public partial class MainViewModel : ViewModelBase
             IsBusy = false;
             StatusText = "";
             Progress = 0;
-            BuildModList();
+            // after a failure the folder may not match the picks: keep the player's picks on screen
+            BuildModList(fromFolder: ok);
             Problems.Clear();
             DescribeGame();
             DescribeModUpdates();
             await LoadImagesAsync();
+            _running = false;
             UpdateState();
-            if (ok) Say(done);
+            if (ok) Say(done());
         }
     }
 
@@ -716,8 +757,8 @@ public partial class MainViewModel : ViewModelBase
         BlockReason = blocking == null ? null : Problems.Count(p => p.Blocks) == 1
             ? $"{blocking.Title}, so mods can't start yet."
             : $"{Problems.Count(p => p.Blocks)} problems need fixing before you can play with mods.";
-        CanPlay = !IsBusy && _game != null && _manifest != null && blocking == null;
-        CanPlayWithoutMods = !IsBusy && _game != null;
+        CanPlay = !IsBusy && !_running && _game != null && _manifest != null && blocking == null;
+        CanPlayWithoutMods = !IsBusy && !_running && _game != null;
         OnPropertyChanged(nameof(ListMissing));
 
         var on = AllMods().Where(m => m.IsPicked).Select(m => m.Name).ToList();
@@ -745,7 +786,9 @@ public partial class MainViewModel : ViewModelBase
         MessageIsError = error;
     }
 
-    private string? OurFolder() => _game != null ? Path.Combine(_game.PluginsDir, PluginScanner.LauncherFolder) : null;
+    private string? OurFolder() => _game != null ? FolderOf(_game) : null;
+
+    private static string FolderOf(GameLocation game) => Path.Combine(game.PluginsDir, PluginScanner.LauncherFolder);
 
     private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
