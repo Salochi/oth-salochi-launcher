@@ -534,7 +534,9 @@ public partial class MainViewModel : ViewModelBase
             LoaderState = $"Not installed yet. Play installs BepInEx {_manifest?.BepInEx?.Version}".TrimEnd() + ".";
             return;
         }
-        LoaderState = "BepInEx is installed";
+        LoaderState = BepInExInstall.FirstStartPending(game)
+            ? "BepInEx is installed. Its first start takes a few minutes while it prepares the game, and the game may look frozen until the menu appears. Later starts are quick."
+            : "BepInEx is installed";
 
         var ourHashes = new HashSet<string>(_manifest?.Mods.Select(m => m.Sha256) ?? [], StringComparer.OrdinalIgnoreCase);
         var ourFiles = new HashSet<string>(_manifest?.Mods.Where(m => m.Kind != ModKind.Core).Select(m => m.File) ?? [], StringComparer.OrdinalIgnoreCase);
@@ -572,6 +574,8 @@ public partial class MainViewModel : ViewModelBase
         if (_game == null || _manifest == null || !EnsureClosed()) return;
         var game = _game;
         var manifest = _manifest;
+        // BepInEx's first start is slow; once it has prepared the game (BepInEx/interop) this note stops on its own
+        bool firstStart = !BepInExInstall.IsInstalled(game) || BepInExInstall.FirstStartPending(game);
         await RunAsync(async ct =>
         {
             if (!BepInExInstall.IsInstalled(game))
@@ -598,7 +602,9 @@ public partial class MainViewModel : ViewModelBase
 
             StatusText = "Starting Over The Hill…";
             if (!NoLaunch) GameProcess.LaunchThroughSteam();
-        }, done: "Over The Hill is starting with your mods.");
+        }, done: firstStart
+            ? "Over The Hill is starting with your mods. This first time, BepInEx prepares the game before the menu appears. It takes a few minutes and the game may look frozen: leave it running. Later starts are quick."
+            : "Over The Hill is starting with your mods.");
     }
 
     [RelayCommand(CanExecute = nameof(CanPlayWithoutMods))]

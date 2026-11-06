@@ -7,6 +7,20 @@ without any mods, and your mods stay installed for next time.
 Salochi mods run on a fork of [OverTheHillPlus](https://github.com/legomaster188/OverTheHillPlus-QoL) by legomaster188
 (MIT), on BepInEx 6 IL2CPP.
 
+## Getting started
+
+1. Download `SalochiLauncher.exe` from the [latest release](https://github.com/Salochi/oth-salochi-launcher/releases/latest)
+   and put it anywhere (your desktop, a games folder). It needs no installing, and it keeps itself up to date.
+2. **Windows will warn you the first time you open it** ("Windows protected your PC", from SmartScreen). The launcher
+   isn't signed with a paid code-signing certificate, and Windows warns about any new program it hasn't seen many people
+   download. Click **More info**, then **Run anyway**. Some antivirus tools flag unsigned programs that download files
+   the same way. The launcher's source is all here, and every mod it installs is checked against a signed list.
+3. Pick your cars and features, and press **Play**. The first time, the launcher installs BepInEx (the mod loader).
+   **The first modded start takes a few minutes**: BepInEx prepares the game before the menu appears, and the game can
+   look frozen while it does. Leave it running. Later starts are quick.
+
+To play without mods, use **Play without mods**. Nothing gets uninstalled, and **Play** brings the mods back.
+
 ## What it does to your game folder
 
 | | |
@@ -49,11 +63,12 @@ dotnet publish src/Salochi.Launcher -c Release # one self-contained SalochiLaunc
 The launcher reads `manifest.json` from the latest GitHub release of this repo (see [docs/manifest.md](docs/manifest.md)).
 
 ```bash
-# 1. build the mods in oth-cars (./deploy.sh, or dotnet build -c Release -p:NoDeploy=true per mod), and the launcher
+# 1. build the mods (oth-cars and oth-salochi-fixes: ./deploy.sh, or dotnet build -c Release -p:NoDeploy=true), and the launcher
 #    (bump <Version> in Directory.Build.props when it changed)
 dotnet publish src/Salochi.Launcher -c Release
-# 2. the release folder: the lists and launcher.json (signed), the DLLs, the car pictures, the BepInEx zip, the exe
-python tools/make_manifest.py --cars ../oth-cars --out release/out --tag v0.1.0 --notes "What changed in the launcher."
+# 2. the release folder: the lists and launcher.json (signed), the DLLs, the car pictures, the BepInEx zip, the exe,
+#    and the licence texts (licenses/: OverTheHillPlus MIT, BepInEx LGPL, Barlow OFL, the third-party notices)
+python tools/make_manifest.py --out release/out --tag v0.1.0 --notes "What changed in the launcher."
 # 3. try it locally first (--no-launch does everything but start the game; --page cars|features|game)
 SalochiLauncher.exe --manifest release/out/manifest.json
 # 4. publish

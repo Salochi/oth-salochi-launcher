@@ -1,17 +1,28 @@
 {
-  "//": "The hand-written part of manifest.json. tools/make_manifest.py adds each file's sha256 and size and copies the DLLs (and images) next to it. 'build' and 'image' are relative to the oth-cars checkout.",
+  "//": "The hand-written part of manifest.json. tools/make_manifest.py adds each file's sha256 and size and copies the DLLs (and images) next to it. 'build' and 'image' are relative to the mod's 'repo' (default oth-cars), a checkout next to this one. Versions are plain numbers: Core's in-game installer ignores anything after a '-'.",
   "testedGameBuilds": ["26326013"],
   "mods": [
     {
       "id": "core",
       "name": "Salochi Core",
-      "version": "1.3.3-salochi.1",
+      "version": "1.4.0",
       "kind": "Core",
       "required": true,
       "description": "The mod framework every Salochi mod runs on: the in-game MODS page, the mod network, and the car framework. Built on OverTheHillPlus by legomaster188.",
       "credits": "Based on OverTheHillPlus by legomaster188 (MIT).",
       "file": "OTH.Core.dll",
       "build": "src/Core/bin/Release/net6.0/OTH.Core.dll"
+    },
+    {
+      "id": "fixes",
+      "name": "Salochi Fixes",
+      "version": "1.0.0",
+      "kind": "Feature",
+      "requires": ["core"],
+      "description": "Fixes for bugs in the game. Multiplayer winch: a guest's winch no longer re-attaches right after unhooking. The host and the guests all need it.",
+      "file": "OTH.Fixes.dll",
+      "repo": "oth-salochi-fixes",
+      "build": "src/OTH.Fixes/bin/Release/net6.0/OTH.Fixes.dll"
     },
     {
       "id": "accessories",
@@ -26,7 +37,7 @@
     {
       "id": "bajabug",
       "name": "Baja Bug",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "kind": "Car",
       "networked": true,
       "requires": ["core"],

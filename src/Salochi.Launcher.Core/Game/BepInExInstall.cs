@@ -13,6 +13,17 @@ public static class BepInExInstall
         File.Exists(Path.Combine(game.BepInExDir, "core", "BepInEx.Unity.IL2CPP.dll"));
 
     /// <summary>
+    /// True until BepInEx has started the game once: on its first start it reads the game's code and generates
+    /// BepInEx/interop, which takes a few minutes while the game looks frozen. Once that folder has its DLLs, later
+    /// starts are quick.
+    /// </summary>
+    public static bool FirstStartPending(GameLocation game)
+    {
+        string interop = Path.Combine(game.BepInExDir, "interop");
+        return !Directory.Exists(interop) || !Directory.EnumerateFiles(interop, "*.dll").Any();
+    }
+
+    /// <summary>
     /// Downloads the manifest's BepInEx zip into the store, checks its hash, and unpacks it into the game folder. An
     /// existing doorstop_config.ini is kept (it may hold the player's vanilla setting). Entries that would land outside
     /// the game folder are refused.

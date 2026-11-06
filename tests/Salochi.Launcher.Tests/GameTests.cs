@@ -47,6 +47,22 @@ public class GameTests
     }
 
     [Fact]
+    public void FirstStart_IsPendingUntilBepInExHasPreparedTheGame()
+    {
+        string root = Directory.CreateTempSubdirectory("salochi-game-").FullName;
+        try
+        {
+            var game = new GameLocation(root, null);
+            Assert.True(BepInExInstall.FirstStartPending(game));
+            Directory.CreateDirectory(Path.Combine(game.BepInExDir, "interop"));
+            Assert.True(BepInExInstall.FirstStartPending(game)); // the folder alone isn't enough
+            File.WriteAllText(Path.Combine(game.BepInExDir, "interop", "Assembly-CSharp.dll"), "");
+            Assert.False(BepInExInstall.FirstStartPending(game));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public void Doorstop_AddsMissingKey()
     {
         Assert.Null(DoorstopConfig.ReadEnabled("[General]\ntarget_assembly = x\n"));

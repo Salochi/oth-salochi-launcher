@@ -6,8 +6,11 @@ Builds a release folder, ready to attach to a GitHub release or to point the lau
   OTH.*.dll                every mod
   BepInEx-*.zip            the pinned mod loader (release/bepinex/, see README)
   launcher.json (+ .sig)   the newest launcher build, and SalochiLauncher.exe itself (from dotnet publish)
+  THIRD-PARTY-NOTICES.md   the third-party notices and licence texts (OverTheHillPlus MIT, BepInEx LGPL, ...)
 
-    python tools/make_manifest.py --cars ../oth-cars --out release/out [--tag v1.0.0] [--no-sign]
+Each mod's DLL comes from its "repo" (default oth-cars): a checkout next to this one, or under --repos.
+
+    python tools/make_manifest.py --out release/out [--tag v1.0.0] [--no-sign]
     SalochiLauncher.exe --manifest release/out/manifest.json      # try it against local builds
 
 The launcher's download URLs are relative to its manifest, so the same folder works locally and as release assets;
@@ -39,7 +42,8 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=os.path.join(here, "..", "release", "mods.src.json"))
-    ap.add_argument("--cars", required=True, help="the oth-cars checkout the DLLs were built in")
+    ap.add_argument("--repos", default=os.path.join(here, "..", ".."),
+                    help="the folder holding the mod checkouts (oth-cars, oth-salochi-fixes, ...); default: next to this one")
     ap.add_argument("--out", required=True)
     ap.add_argument("--tag", help="write absolute URLs to this release tag")
     ap.add_argument("--bepinex", default=os.path.join(here, "..", "release", "bepinex", "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788.zip"),
@@ -64,14 +68,15 @@ def main():
 
     mods = []
     for m in src["mods"]:
-        dll = os.path.join(args.cars, m["build"])
+        repo = os.path.join(args.repos, m.get("repo", "oth-cars"))
+        dll = os.path.join(repo, m["build"])
         if not os.path.isfile(dll):
-            sys.exit(f"{m['id']}: no build at {dll} (build oth-cars first)")
+            sys.exit(f"{m['id']}: no build at {dll} (build {m.get('repo', 'oth-cars')} first)")
         shutil.copy2(dll, os.path.join(args.out, m["file"]))
-        entry = {k: v for k, v in m.items() if k not in ("build", "image")}
+        entry = {k: v for k, v in m.items() if k not in ("build", "image", "repo")}
         entry.update(url=url(m["file"]), sha256=sha256(dll), size=os.path.getsize(dll))
         if m.get("image"):
-            img = os.path.join(args.cars, m["image"])
+            img = os.path.join(repo, m["image"])
             name = m["id"] + ".png"
             shutil.copy2(img, os.path.join(args.out, name))
             entry.update(image=url(name), imageSha256=sha256(img))
@@ -93,6 +98,10 @@ def main():
          "description": m.get("description", ""), "category": m.get("kind", "Feature").lower(),
          "changes": m.get("changes", [])}
         for m in mods]}
+
+    # flat, next to the downloads: a GitHub release has no folders
+    for f in os.listdir(os.path.join(here, "..", "licenses")):
+        shutil.copy2(os.path.join(here, "..", "licenses", f), os.path.join(args.out, f))
 
     docs = [("manifest.json", manifest), ("mods.json", oth)]
     if args.launcher and os.path.isfile(args.launcher):
