@@ -1,0 +1,93 @@
+# A release build of the launcher: push a tag v<Version> (the <Version> in Directory.Build.props), or run it by hand.
+#
+# GitHub builds SalochiLauncher.exe from the tagged source and, once the project is set up on SignPath (the
+# SIGNPATH_* settings below exist), sends it there to be signed. Each signing request waits for an approver
+# (CODE_SIGNING.md). The signed exe comes back as the artifact "SalochiLauncher-signed".
+#
+# The release itself is still made on the maintainer's machine, because manifest.json, mods.json and launcher.json are
+# signed with the Salochi release key, which never leaves it. Download the artifact, then
+#   python tools/make_manifest.py --out release/out --tag v<Version> --launcher <the signed SalochiLauncher.exe> --notes "..."
+#   gh release create v<Version> release/out/*
+# (README, "Releasing mods").
+#
+# SignPath settings (repository settings > Secrets and variables > Actions):
+#   secret   SIGNPATH_API_TOKEN          a SignPath user with submitter rights on the project
+#   variable SIGNPATH_ORGANIZATION_ID    the SignPath organization id
+#   variable SIGNPATH_PROJECT_SLUG       e.g. oth-salochi-launcher
+#   variable SIGNPATH_POLICY_SLUG        release-signing
+# Without them the workflow still builds and tests, and uploads the unsigned exe.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Read the version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $v = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          if (-not $v) { throw "No <Version> in Directory.Build.props" }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$v") {
+            throw "Tag $env:GITHUB_REF_NAME doesn't match <Version>$v</Version> in Directory.Build.props"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test tests/Salochi.Launcher.Tests -c Release
+
+      - name: Publish
+        run: dotnet publish src/Salochi.Launcher -c Release -o out
+
+      - name: Check the exe's product name and version
+        shell: pwsh
+        run: |
+          $info = (Get-Item out/SalochiLauncher.exe).VersionInfo
+          if ($info.ProductName -ne 'Salochi Launcher') { throw "Product name is '$($info.ProductName)'" }
+          if ($info.ProductVersion -ne '${{ steps.version.outputs.version }}') { throw "Product version is '$($info.ProductVersion)'" }
+
+      - name: Upload the unsigned exe
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: SalochiLauncher-unsigned
+          path: out/SalochiLauncher.exe
+
+      - name: Sign with SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: initial
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 86400
+          output-artifact-directory: signed
+
+      - name: Upload the signed exe
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: SalochiLauncher-signed
+          path: signed/SalochiLauncher.exe

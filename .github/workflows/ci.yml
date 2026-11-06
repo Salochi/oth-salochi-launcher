@@ -1,0 +1,32 @@
+# Every push and pull request: the tests, and a published SalochiLauncher.exe to try (unsigned, kept 14 days).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test tests/Salochi.Launcher.Tests -c Release
+
+      - name: Publish
+        run: dotnet publish src/Salochi.Launcher -c Release -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SalochiLauncher-${{ github.sha }}
+          path: out/SalochiLauncher.exe
+          retention-days: 14

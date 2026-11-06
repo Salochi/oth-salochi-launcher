@@ -12,7 +12,8 @@ Salochi mods run on a fork of [OverTheHillPlus](https://github.com/legomaster188
 1. Download `SalochiLauncher.exe` from the [latest release](https://github.com/Salochi/oth-salochi-launcher/releases/latest)
    and put it anywhere (your desktop, a games folder). It needs no installing, and it keeps itself up to date.
 2. **Windows will warn you the first time you open it** ("Windows protected your PC", from SmartScreen). The launcher
-   isn't signed with a paid code-signing certificate, and Windows warns about any new program it hasn't seen many people
+   isn't code-signed yet (we're applying for free signing for open source, see the
+   [code signing policy](CODE_SIGNING.md)), and Windows warns about any new program it hasn't seen many people
    download. Click **More info**, then **Run anyway**. Some antivirus tools flag unsigned programs that download files
    the same way. The launcher's source is all here, and every mod it installs is checked against a signed list.
 3. Pick your cars and features, and press **Play**. The first time, the launcher installs BepInEx (the mod loader).
@@ -63,17 +64,25 @@ dotnet publish src/Salochi.Launcher -c Release # one self-contained SalochiLaunc
 The launcher reads `manifest.json` from the latest GitHub release of this repo (see [docs/manifest.md](docs/manifest.md)).
 
 ```bash
-# 1. build the mods (oth-cars and oth-salochi-fixes: ./deploy.sh, or dotnet build -c Release -p:NoDeploy=true), and the launcher
-#    (bump <Version> in Directory.Build.props when it changed)
-dotnet publish src/Salochi.Launcher -c Release
-# 2. the release folder: the lists and launcher.json (signed), the DLLs, the car pictures, the BepInEx zip, the exe,
-#    and the licence texts (licenses/: OverTheHillPlus MIT, BepInEx LGPL, Barlow OFL, the third-party notices)
-python tools/make_manifest.py --out release/out --tag v0.1.0 --notes "What changed in the launcher."
-# 3. try it locally first (--no-launch does everything but start the game; --page cars|features|game)
-SalochiLauncher.exe --manifest release/out/manifest.json
-# 4. publish
-gh release create v0.1.0 release/out/*
+# 1. build the mods (oth-cars and oth-salochi-fixes: ./deploy.sh, or dotnet build -c Release -p:NoDeploy=true)
+# 2. the launcher, when it changed: bump <Version> in Directory.Build.props, commit, and push the tag
+git tag v0.2.0 && git push origin v0.2.0
+#    GitHub Actions (.github/workflows/release.yml) builds and tests SalochiLauncher.exe from the tag, has it signed
+#    through SignPath once that's set up (CODE_SIGNING.md), and attaches it to the run as an artifact: download it
+gh run download --name SalochiLauncher-signed --dir release/launcher    # or SalochiLauncher-unsigned, before SignPath
+# 3. the release folder: the lists and launcher.json (signed with the release key), the DLLs, the car pictures, the
+#    BepInEx zip, the exe, and the licence texts (licenses/: OverTheHillPlus MIT, BepInEx LGPL, Barlow OFL, notices)
+python tools/make_manifest.py --out release/out --tag v0.2.0 --launcher release/launcher/SalochiLauncher.exe --notes "What changed in the launcher."
+# 4. try it locally first (--no-launch does everything but start the game; --page cars|features|game)
+release/out/SalochiLauncher.exe --manifest release/out/manifest.json
+# 5. publish (link the code signing policy in the release notes)
+gh release create v0.2.0 release/out/* --notes "... Code signing policy: https://github.com/Salochi/oth-salochi-launcher/blob/main/CODE_SIGNING.md"
 ```
+
+A mods-only release skips step 2, but still passes `--launcher` with the current (signed) exe from the last launcher
+release. Every release then carries `launcher.json`, and the launcher always finds the newest build behind
+`releases/latest`, even when someone skipped a few releases. Every push also runs `.github/workflows/ci.yml` (tests,
+plus an unsigned exe to try).
 
 `release/mods.src.json` is the hand-written part: names, descriptions, credits, and which build each DLL comes from.
 Only publish cars whose model licence allows redistribution.
@@ -83,7 +92,8 @@ The BepInEx zip isn't in git. Put `BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788.zip
 (SHA-256 `f4cc496bd098a0df4164b81e3737297707f13a47c2478dba2f60eefab784817a`). BepInEx is LGPL-2.1, and releases ship
 it unmodified.
 
-Both lists are signed with the Salochi release key (see [docs/manifest.md](docs/manifest.md#signatures)).
+Both lists are signed with the Salochi release key (see [docs/manifest.md](docs/manifest.md#signatures)). The exe's
+own signature is a separate thing: see the [code signing policy](CODE_SIGNING.md).
 
 ## Layout
 

@@ -4,3 +4,4 @@ obj/
 *.user
 release/out/
 release/bepinex/
+/release/launcher/

@@ -6,5 +6,7 @@
     <Version>0.1.0</Version>
     <Authors>Salochi</Authors>
     <Product>Salochi Launcher</Product>
+    <!-- The exe's product version is exactly <Version> (no "+<commit>"): SignPath checks it against the release. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>
