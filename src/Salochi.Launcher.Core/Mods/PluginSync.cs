@@ -1,0 +1,61 @@
+namespace Salochi.Launcher.Core.Mods;
+
+/// <summary>What a sync will do to BepInEx/plugins/Salochi.</summary>
+public sealed record SyncPlan(IReadOnlyList<ModEntry> Install, IReadOnlyList<string> Remove, IReadOnlyList<ModEntry> Keep)
+{
+    public bool IsEmpty => Install.Count == 0 && Remove.Count == 0;
+}
+
+/// <summary>
+/// Makes BepInEx/plugins/Salochi hold exactly the picked mods. That folder belongs to the launcher: a file there that
+/// no picked mod installs is removed (the launcher's store keeps its copy). Nothing outside it is touched.
+/// </summary>
+public static class PluginSync
+{
+    /// <summary>The picked ids plus every required mod and everything they require, in manifest order.</summary>
+    public static IReadOnlyList<ModEntry> Resolve(Manifest manifest, IEnumerable<string> picked)
+    {
+        var want = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stack = new Stack<string>(picked.Concat(manifest.Mods.Where(m => m.Required).Select(m => m.Id)));
+        while (stack.Count > 0)
+        {
+            string id = stack.Pop();
+            var mod = manifest.Find(id);
+            if (mod == null || !want.Add(mod.Id)) continue;
+            foreach (var r in mod.Requires) stack.Push(r);
+        }
+        return manifest.Mods.Where(m => want.Contains(m.Id)).ToList();
+    }
+
+    public static SyncPlan Plan(string targetDir, IReadOnlyList<ModEntry> mods)
+    {
+        var install = new List<ModEntry>();
+        var keep = new List<ModEntry>();
+        foreach (var m in mods)
+        {
+            string p = Path.Combine(targetDir, m.File);
+            if (File.Exists(p) && string.Equals(FileUtil.Sha256(p), m.Sha256, StringComparison.OrdinalIgnoreCase)) keep.Add(m);
+            else install.Add(m);
+        }
+        var wanted = new HashSet<string>(mods.Select(m => m.File), StringComparer.OrdinalIgnoreCase);
+        var remove = Directory.Exists(targetDir)
+            ? Directory.EnumerateFiles(targetDir).Select(Path.GetFileName).OfType<string>().Where(f => !wanted.Contains(f)).ToList()
+            : [];
+        return new SyncPlan(install, remove, keep);
+    }
+
+    /// <summary>Applies <paramref name="plan"/>: each install copies the store's file in (through a temp name, then a
+    /// rename), each removal deletes the file. The game must be closed: Windows locks loaded DLLs.</summary>
+    public static void Apply(string targetDir, SyncPlan plan, Func<ModEntry, string> storePath)
+    {
+        Directory.CreateDirectory(targetDir);
+        foreach (var f in plan.Remove) File.Delete(Path.Combine(targetDir, f));
+        foreach (var m in plan.Install)
+        {
+            string dest = Path.Combine(targetDir, m.File);
+            string tmp = dest + ".salochi-tmp";
+            File.Copy(storePath(m), tmp, overwrite: true);
+            File.Move(tmp, dest, overwrite: true);
+        }
+    }
+}

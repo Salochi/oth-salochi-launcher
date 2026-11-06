@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything the launcher does to the game folder, without UI: testable on its own. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Salochi.Launcher.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Salochi.Launcher.Tests" />
+  </ItemGroup>
+</Project>

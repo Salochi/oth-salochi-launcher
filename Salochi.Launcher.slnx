@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Salochi.Launcher.Core/Salochi.Launcher.Core.csproj" />
+    <Project Path="src/Salochi.Launcher/Salochi.Launcher.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Salochi.Launcher.Tests/Salochi.Launcher.Tests.csproj" />
+  </Folder>
+</Solution>

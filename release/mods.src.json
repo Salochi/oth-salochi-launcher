@@ -1,0 +1,39 @@
+{
+  "//": "The hand-written part of manifest.json. tools/make_manifest.py adds each file's sha256 and size and copies the DLLs next to it. 'build' is relative to the oth-cars checkout.",
+  "testedGameBuilds": ["26326013"],
+  "mods": [
+    {
+      "id": "core",
+      "name": "Salochi Core",
+      "version": "1.3.3-salochi.1",
+      "kind": "Core",
+      "required": true,
+      "description": "The mod framework every Salochi mod runs on: the in-game MODS page, the mod network, and the car framework. Built on OverTheHillPlus by legomaster188.",
+      "credits": "Based on OverTheHillPlus by legomaster188 (MIT).",
+      "file": "OTH.Core.dll",
+      "build": "src/Core/bin/Release/net6.0/OTH.Core.dll"
+    },
+    {
+      "id": "accessories",
+      "name": "Accessory Editor",
+      "version": "1.0.0",
+      "kind": "Feature",
+      "requires": ["core"],
+      "description": "Press F8 in the garage to stack accessories, then move, turn and resize each one. You can also set wheel size and offset. Works on every framework car.",
+      "file": "OTH.Accessories.dll",
+      "build": "src/Mods/Accessories/bin/Release/net6.0/OTH.Accessories.dll"
+    },
+    {
+      "id": "bajabug",
+      "name": "Baja Bug",
+      "version": "0.1.0",
+      "kind": "Car",
+      "networked": true,
+      "requires": ["core"],
+      "description": "A lifted Baja Bug, built on the Brick's wheels and axles.",
+      "credits": "Model: \"Volkswagen Beetle\" by yugengen (Sketchfab, CC BY 4.0).",
+      "file": "OTH.BajaBug.dll",
+      "build": "src/Mods/BajaBug/bin/Release/net6.0/OTH.BajaBug.dll"
+    }
+  ]
+}

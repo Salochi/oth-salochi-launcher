@@ -1,0 +1,60 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Salochi.Launcher.App"
+             xmlns:local="using:Salochi.Launcher"
+             RequestedThemeVariant="Dark">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <!-- A warm dusty orange, like the hills at sunset. -->
+        <Color x:Key="SystemAccentColor">#E0884A</Color>
+        <Color x:Key="SystemAccentColorDark1">#C9733A</Color>
+        <Color x:Key="SystemAccentColorLight1">#EBA06C</Color>
+        <SolidColorBrush x:Key="WindowBg" Color="#16171A" />
+        <SolidColorBrush x:Key="CardBg" Color="#202227" />
+        <SolidColorBrush x:Key="CardBorder" Color="#2C2F36" />
+        <SolidColorBrush x:Key="Muted" Color="#9A9FA8" />
+        <SolidColorBrush x:Key="ErrorStripe" Color="#E5534B" />
+        <SolidColorBrush x:Key="WarningStripe" Color="#D9A33A" />
+        <SolidColorBrush x:Key="InfoStripe" Color="#5A8FD8" />
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="1.2" />
+            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="Margin" Value="4,18,0,8" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource CardBg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Border.chip">
+            <Setter Property="Background" Value="#2A2D34" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="8,2" />
+        </Style>
+        <Style Selector="Button.play">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="36,10" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+    </Application.Styles>
+</Application>

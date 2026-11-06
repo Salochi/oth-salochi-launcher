@@ -1,0 +1,122 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Salochi.Launcher.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
+        x:Class="Salochi.Launcher.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Salochi Launcher"
+        Width="960" Height="660" MinWidth="720" MinHeight="480"
+        Background="{StaticResource WindowBg}"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Window.DataTemplates>
+        <!-- one mod row -->
+        <DataTemplate DataType="vm:ModItemViewModel">
+            <Border Classes="card" Padding="16,12" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <CheckBox Grid.Column="0" VerticalAlignment="Top" Margin="0,0,10,0"
+                              IsChecked="{Binding IsPicked}" IsEnabled="{Binding CanToggle}"
+                              ToolTip.Tip="{Binding LockedHint}" />
+                    <StackPanel Grid.Column="1" Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Version}" Classes="muted" VerticalAlignment="Bottom" FontSize="12" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Description}" Classes="muted" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Credits}" IsVisible="{Binding HasCredits}" Classes="muted" FontSize="12"
+                                   FontStyle="Italic" TextWrapping="Wrap" />
+                        <TextBlock IsVisible="{Binding IsNetworked}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource WarningStripe}"
+                                   Text="Multiplayer: everyone in a session needs the same cars." />
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="chip" VerticalAlignment="Top" Margin="12,0,0,0">
+                        <TextBlock Text="{Binding Status}" FontSize="12" Classes="muted" />
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- one banner -->
+        <DataTemplate DataType="vm:NoticeViewModel">
+            <Border Classes="card" Margin="0,0,0,8" ClipToBounds="True">
+                <Grid ColumnDefinitions="4,*,Auto">
+                    <Border Grid.Column="0" Background="{StaticResource ErrorStripe}" IsVisible="{Binding IsError}" />
+                    <Border Grid.Column="0" Background="{StaticResource WarningStripe}" IsVisible="{Binding IsWarning}" />
+                    <Border Grid.Column="0" Background="{StaticResource InfoStripe}" IsVisible="{Binding IsInfo}" />
+                    <StackPanel Grid.Column="1" Margin="14,10" Spacing="2">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Body}" Classes="muted" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Margin="0,0,12,0" VerticalAlignment="Center"
+                            Content="{Binding ActionLabel}" Command="{Binding Action}" IsVisible="{Binding HasAction}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.DataTemplates>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- header -->
+        <Grid Grid.Row="0" Margin="28,22,28,6" ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="Salochi" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}" />
+                    <TextBlock Text="Launcher" FontSize="26" FontWeight="Light" />
+                </StackPanel>
+                <TextBlock Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis">
+                    <Run Text="Over The Hill  ·  " /><Run Text="{Binding GameSummary}" />
+                </TextBlock>
+            </StackPanel>
+            <Button Grid.Column="1" VerticalAlignment="Top" Content="•••" Padding="12,6" ToolTip.Tip="More">
+                <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                        <MenuItem Header="Check again" Command="{Binding RefreshCommand}" />
+                        <MenuItem Header="Pick game folder…" Command="{Binding ChooseGameFolderCommand}" />
+                        <Separator />
+                        <MenuItem Header="Open game folder" Command="{Binding OpenGameFolderCommand}" />
+                        <MenuItem Header="Open the mod loader's log" Command="{Binding OpenLogCommand}" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
+
+        <!-- notices and mods -->
+        <ScrollViewer Grid.Row="1" Padding="28,8,28,12">
+            <StackPanel>
+                <ItemsControl ItemsSource="{Binding Notices}" />
+
+                <StackPanel IsVisible="{Binding HasMods}">
+                    <TextBlock Classes="section" Text="CORE" />
+                    <ItemsControl ItemsSource="{Binding CoreMods}" />
+                    <TextBlock Classes="section" Text="FEATURES" IsVisible="{Binding HasFeatures}" />
+                    <ItemsControl ItemsSource="{Binding FeatureMods}" />
+                    <TextBlock Classes="section" Text="CARS" IsVisible="{Binding HasCars}" />
+                    <ItemsControl ItemsSource="{Binding CarMods}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- footer -->
+        <Border Grid.Row="2" Background="#1B1C20" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="28,14">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel VerticalAlignment="Center" Spacing="6">
+                    <TextBlock Text="{Binding StatusText}" IsVisible="{Binding IsBusy}" />
+                    <ProgressBar Value="{Binding Progress}" Maximum="1" IsVisible="{Binding IsBusy}" MaxWidth="320" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding LaunchMode}" Classes="muted" FontSize="12" IsVisible="{Binding !IsBusy}"
+                               ToolTip.Tip="What happens when you start the game from Steam instead of the launcher." />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="secondary" Margin="0,0,10,0" Content="Play vanilla"
+                        Command="{Binding PlayVanillaCommand}"
+                        ToolTip.Tip="Start the game without any mods. Your mods stay installed for next time." />
+                <Button Grid.Column="2" Classes="play accent" Content="Play" Command="{Binding PlayCommand}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
