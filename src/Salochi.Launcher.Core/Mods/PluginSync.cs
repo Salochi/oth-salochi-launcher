@@ -7,11 +7,18 @@ public sealed record SyncPlan(IReadOnlyList<ModEntry> Install, IReadOnlyList<str
 }
 
 /// <summary>
-/// Makes BepInEx/plugins/Salochi hold exactly the picked mods. That folder belongs to the launcher: a file there that
-/// no picked mod installs is removed (the launcher's store keeps its copy). Nothing outside it is touched.
+/// Makes BepInEx/plugins/Salochi hold exactly the picked mods of the manifest: the ones not picked are removed (the
+/// launcher's store keeps its copy). Files the manifest doesn't list, and anything outside that folder, are left alone.
 /// </summary>
 public static class PluginSync
 {
+    /// <summary>
+    /// The manifest mods installed in <paramref name="targetDir"/> (by file name, whatever their version). Core's in-game
+    /// installer writes to the same folder, so this, not the launcher's own memory, is what the player last picked.
+    /// </summary>
+    public static IReadOnlyList<string> InstalledIds(Manifest manifest, string targetDir) =>
+        manifest.Mods.Where(m => File.Exists(Path.Combine(targetDir, m.File))).Select(m => m.Id).ToList();
+
     /// <summary>The picked ids plus every required mod and everything they require, in manifest order.</summary>
     public static IReadOnlyList<ModEntry> Resolve(Manifest manifest, IEnumerable<string> picked)
     {
@@ -27,7 +34,9 @@ public static class PluginSync
         return manifest.Mods.Where(m => want.Contains(m.Id)).ToList();
     }
 
-    public static SyncPlan Plan(string targetDir, IReadOnlyList<ModEntry> mods)
+    /// <param name="managed">Every mod in the manifest. Only their files are ever removed: anything else in the folder
+    /// (a personal build a dev deploy put there, Core's .pending queue) is left alone.</param>
+    public static SyncPlan Plan(string targetDir, IReadOnlyList<ModEntry> mods, IEnumerable<ModEntry>? managed = null)
     {
         var install = new List<ModEntry>();
         var keep = new List<ModEntry>();
@@ -38,9 +47,11 @@ public static class PluginSync
             else install.Add(m);
         }
         var wanted = new HashSet<string>(mods.Select(m => m.File), StringComparer.OrdinalIgnoreCase);
-        var remove = Directory.Exists(targetDir)
-            ? Directory.EnumerateFiles(targetDir).Select(Path.GetFileName).OfType<string>().Where(f => !wanted.Contains(f)).ToList()
-            : [];
+        var remove = (managed ?? mods)
+            .Select(m => m.File)
+            .Where(f => !wanted.Contains(f) && File.Exists(Path.Combine(targetDir, f)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         return new SyncPlan(install, remove, keep);
     }
 

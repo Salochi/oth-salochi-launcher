@@ -1,5 +1,5 @@
 {
-  "//": "The hand-written part of manifest.json. tools/make_manifest.py adds each file's sha256 and size and copies the DLLs next to it. 'build' is relative to the oth-cars checkout.",
+  "//": "The hand-written part of manifest.json. tools/make_manifest.py adds each file's sha256 and size and copies the DLLs (and images) next to it. 'build' and 'image' are relative to the oth-cars checkout.",
   "testedGameBuilds": ["26326013"],
   "mods": [
     {
@@ -33,7 +33,8 @@
       "description": "A lifted Baja Bug, built on the Brick's wheels and axles.",
       "credits": "Model: \"Volkswagen Beetle\" by yugengen (Sketchfab, CC BY 4.0).",
       "file": "OTH.BajaBug.dll",
-      "build": "src/Mods/BajaBug/bin/Release/net6.0/OTH.BajaBug.dll"
+      "build": "src/Mods/BajaBug/bin/Release/net6.0/OTH.BajaBug.dll",
+      "image": "src/Mods/BajaBug/Assets/bajabug_icon.png"
     }
   ]
 }

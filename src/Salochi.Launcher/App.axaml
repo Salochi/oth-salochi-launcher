@@ -8,53 +8,185 @@
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <!--
+      Trail signage at dusk: a pine-slate base, bone text, and one trail-marker yellow for what moves you forward (Play,
+      the page you're on, the cars you picked). Rust only for problems. Type is Barlow, after highway signs: regular
+      width for reading, condensed for names and headings.
+    -->
     <Application.Resources>
-        <!-- A warm dusty orange, like the hills at sunset. -->
-        <Color x:Key="SystemAccentColor">#E0884A</Color>
-        <Color x:Key="SystemAccentColorDark1">#C9733A</Color>
-        <Color x:Key="SystemAccentColorLight1">#EBA06C</Color>
-        <SolidColorBrush x:Key="WindowBg" Color="#16171A" />
-        <SolidColorBrush x:Key="CardBg" Color="#202227" />
-        <SolidColorBrush x:Key="CardBorder" Color="#2C2F36" />
-        <SolidColorBrush x:Key="Muted" Color="#9A9FA8" />
-        <SolidColorBrush x:Key="ErrorStripe" Color="#E5534B" />
-        <SolidColorBrush x:Key="WarningStripe" Color="#D9A33A" />
-        <SolidColorBrush x:Key="InfoStripe" Color="#5A8FD8" />
+        <Color x:Key="PineColor">#1F2B2A</Color>
+        <Color x:Key="RidgeColor">#2A3937</Color>
+        <Color x:Key="HollowColor">#182221</Color>
+        <Color x:Key="BoneColor">#EEF0E6</Color>
+        <Color x:Key="LichenColor">#A9B8AE</Color>
+        <Color x:Key="TrailColor">#F2C14E</Color>
+        <Color x:Key="RustColor">#E06A4E</Color>
+
+        <SolidColorBrush x:Key="Pine" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="Ridge" Color="{StaticResource RidgeColor}" />
+        <SolidColorBrush x:Key="Hollow" Color="{StaticResource HollowColor}" />
+        <SolidColorBrush x:Key="Bone" Color="{StaticResource BoneColor}" />
+        <SolidColorBrush x:Key="Lichen" Color="{StaticResource LichenColor}" />
+        <SolidColorBrush x:Key="Trail" Color="{StaticResource TrailColor}" />
+        <SolidColorBrush x:Key="Rust" Color="{StaticResource RustColor}" />
+        <SolidColorBrush x:Key="Rule" Color="#35A9B8AE" />
+
+        <FontFamily x:Key="ContentControlThemeFontFamily">avares://SalochiLauncher/Assets/Fonts#Barlow</FontFamily>
+        <FontFamily x:Key="Condensed">avares://SalochiLauncher/Assets/Fonts#Barlow Condensed</FontFamily>
+
+        <!-- Fluent's accent is the trail yellow; things drawn on it get dark pine text and knobs. -->
+        <Color x:Key="SystemAccentColor">#F2C14E</Color>
+        <Color x:Key="SystemAccentColorDark1">#E0AE3A</Color>
+        <Color x:Key="SystemAccentColorLight1">#F6CF72</Color>
+        <Color x:Key="SystemAccentColorLight2">#F8DA92</Color>
+        <SolidColorBrush x:Key="AccentButtonForeground" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="{StaticResource PineColor}" />
+        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="{StaticResource PineColor}" />
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme />
 
-        <Style Selector="TextBlock.muted">
-            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Style Selector="Window">
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
         </Style>
-        <Style Selector="TextBlock.section">
-            <Setter Property="FontSize" Value="12" />
+
+        <!-- type scale: 14 body, 13 small, 18 / 24 / 30 condensed -->
+        <Style Selector="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="LineHeight" Value="20" />
+        </Style>
+        <Style Selector="TextBlock.quiet">
+            <Setter Property="Foreground" Value="{StaticResource Lichen}" />
+        </Style>
+        <Style Selector="TextBlock.small">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="18" />
+        </Style>
+        <Style Selector="TextBlock.name">
+            <Setter Property="FontFamily" Value="{StaticResource Condensed}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="LetterSpacing" Value="1.2" />
-            <Setter Property="Foreground" Value="{StaticResource Muted}" />
-            <Setter Property="Margin" Value="4,18,0,8" />
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="LineHeight" Value="28" />
         </Style>
-        <Style Selector="Border.card">
-            <Setter Property="Background" Value="{StaticResource CardBg}" />
-            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
+        <Style Selector="TextBlock.heading">
+            <Setter Property="FontFamily" Value="{StaticResource Condensed}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="LineHeight" Value="22" />
+        </Style>
+        <Style Selector="TextBlock.title">
+            <Setter Property="FontFamily" Value="{StaticResource Condensed}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="30" />
+            <Setter Property="LineHeight" Value="34" />
+        </Style>
+
+        <!-- page tabs in the header: the page you're on is bone with a trail-yellow blaze under it -->
+        <Style Selector="Button.tab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6,10,0" />
+            <Setter Property="Foreground" Value="{StaticResource Lichen}" />
+            <Setter Property="FontFamily" Value="{StaticResource Condensed}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.tab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
+        </Style>
+        <Style Selector="Button.tab:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.tab.current">
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
+        </Style>
+        <Style Selector="Button.tab Border.blaze">
+            <Setter Property="Height" Value="3" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.tab.current Border.blaze">
+            <Setter Property="Background" Value="{StaticResource Trail}" />
+        </Style>
+
+        <!-- a car tile: the whole tile is the switch -->
+        <Style Selector="ToggleButton.tile">
+            <Setter Property="Width" Value="272" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,16,16" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="BorderBrush" Value="{StaticResource Ridge}" />
+            <Setter Property="Background" Value="{StaticResource Ridge}" />
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="ToggleButton.tile:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#31423F" />
+            <Setter Property="BorderBrush" Value="#4A5E5A" />
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
+        </Style>
+        <Style Selector="ToggleButton.tile:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Ridge}" />
+        </Style>
+        <Style Selector="ToggleButton.tile:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Ridge}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Trail}" />
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
+        </Style>
+        <Style Selector="ToggleButton.tile:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#31423F" />
+            <Setter Property="BorderBrush" Value="{StaticResource Trail}" />
+        </Style>
+        <Style Selector="ToggleButton.tile Border.mark">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="13" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="BorderBrush" Value="{StaticResource Lichen}" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.tile:checked Border.mark">
+            <Setter Property="BorderBrush" Value="{StaticResource Trail}" />
+            <Setter Property="Background" Value="{StaticResource Trail}" />
+        </Style>
+        <Style Selector="ToggleButton.tile PathIcon.tick">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="ToggleButton.tile:checked PathIcon.tick">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+
+        <Style Selector="Button.play">
+            <Setter Property="FontFamily" Value="{StaticResource Condensed}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="Padding" Value="44,8" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
-        <Style Selector="Border.chip">
-            <Setter Property="Background" Value="#2A2D34" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="8,2" />
+        <Style Selector="Button.plain">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="CornerRadius" Value="8" />
         </Style>
-        <Style Selector="Button.play">
-            <Setter Property="FontSize" Value="16" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="36,10" />
-            <Setter Property="CornerRadius" Value="6" />
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource Trail}" />
+            <Setter Property="Cursor" Value="Hand" />
         </Style>
-        <Style Selector="Button.secondary">
-            <Setter Property="Padding" Value="18,10" />
-            <Setter Property="CornerRadius" Value="6" />
+        <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource Bone}" />
         </Style>
     </Application.Styles>
 </Application>

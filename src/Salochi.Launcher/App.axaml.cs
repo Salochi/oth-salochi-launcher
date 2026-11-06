@@ -19,17 +19,22 @@ public partial class App : Application
         {
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainViewModel(ManifestArg(desktop.Args ?? [])),
+                DataContext = new MainViewModel(Arg(desktop.Args ?? [], "--manifest"))
+                {
+                    NoLaunch = Array.IndexOf(desktop.Args ?? [], "--no-launch") >= 0,
+                    Page = Enum.TryParse<Page>(Arg(desktop.Args ?? [], "--page"), true, out var page) ? page : Page.Cars,
+                },
             };
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>"--manifest &lt;path&gt;" reads a local mod list instead of the published one (for testing builds).</summary>
-    private static string? ManifestArg(string[] args)
+    /// <summary>"--manifest &lt;path&gt;" reads a local mod list instead of the published one (for testing builds);
+    /// "--page cars|features|game" opens on that page.</summary>
+    private static string? Arg(string[] args, string name)
     {
-        int i = Array.IndexOf(args, "--manifest");
+        int i = Array.IndexOf(args, name);
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 }

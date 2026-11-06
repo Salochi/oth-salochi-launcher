@@ -26,7 +26,9 @@ writes it from `release/mods.src.json`. For testing, `--manifest <path>` reads a
       "file": "OTH.BajaBug.dll",       // the name it gets in BepInEx/plugins/Salochi
       "url": "OTH.BajaBug.dll",        // relative to the manifest, or an absolute GitHub URL
       "sha256": "…", "size": 0,
-      "changes": [{ "version": "0.1.0", "date": "2026-11-06", "text": "…" }]
+      "changes": [{ "version": "0.1.0", "date": "2026-11-06", "text": "…" }],
+      "image": "bajabug.png",          // optional: the car's garage silhouette (white on transparent) for its tile
+      "imageSha256": "…"
     }
   ]
 }
@@ -40,8 +42,19 @@ writes it from `release/mods.src.json`. For testing, `--manifest <path>` reads a
 - `file` is a plain `.dll` name, and no two mods can share one.
 - Every id in `requires` must be in the manifest.
 
-## Not there yet
+## Signatures
 
-- **Signing.** The original OverTheHillPlus signs its `mods.json`. We rely on HTTPS plus the hashes inside the
-  manifest, so anyone who can push to this repo's releases can ship code to players. A signature from an offline key
-  would close that gap.
+`manifest.json.sig` and `mods.json.sig` sit next to the lists: base64 of an ECDSA P-256 / SHA-256 signature (r||s)
+by the Salochi release key. The launcher refuses a published list whose signature doesn't check out. A local list
+(`--manifest`) is checked when it has a `.sig`, and marked unsigned on the Game page when it doesn't.
+
+`mods.json` is the same set of mods in the original OverTheHillPlus format, for Salochi Core's in-game installer.
+That installer only downloads from this repo, and only with the same key.
+
+```bash
+dotnet run tools/sign.cs -- keygen          # once: %USERPROFILE%\.salochi\release-key.pem, prints the public half
+dotnet run tools/sign.cs -- sign <file>     # make_manifest.py does this for both lists
+```
+
+The public half is in `src/Salochi.Launcher.Core/Mods/ReleaseKey.cs` and in oth-cars' `src/Core/Install/ReleaseKey.cs`.
+Back up the private key: losing it means a new key, which needs a launcher and Core update.

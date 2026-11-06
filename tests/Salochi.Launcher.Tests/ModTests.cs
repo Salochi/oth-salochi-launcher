@@ -69,14 +69,16 @@ public sealed class ModTests : IDisposable
         File.WriteAllText(Path.Combine(store, "OTH.BajaBug.dll"), "bug");
         Directory.CreateDirectory(target);
         File.WriteAllText(Path.Combine(target, "OTH.Accessories.dll"), "acc"); // ticked off since
+        File.WriteAllText(Path.Combine(target, "OTH.Tacoma.dll"), "personal"); // not in the manifest: left alone
 
-        var plan = PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"]));
+        Assert.Equal(["accessories"], PluginSync.InstalledIds(m, target));
+        var plan = PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"]), m.Mods);
         Assert.Equal(["core", "bajabug"], plan.Install.Select(x => x.Id));
         Assert.Equal(["OTH.Accessories.dll"], plan.Remove);
         PluginSync.Apply(target, plan, e => Path.Combine(store, e.File));
 
-        Assert.Equal(["OTH.BajaBug.dll", "OTH.Core.dll"], Directory.GetFiles(target).Select(Path.GetFileName).Order());
-        Assert.True(PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"])).IsEmpty);
+        Assert.Equal(["OTH.BajaBug.dll", "OTH.Core.dll", "OTH.Tacoma.dll"], Directory.GetFiles(target).Select(Path.GetFileName).Order());
+        Assert.True(PluginSync.Plan(target, PluginSync.Resolve(m, ["bajabug"]), m.Mods).IsEmpty);
     }
 
     [Fact]
@@ -92,6 +94,21 @@ public sealed class ModTests : IDisposable
         File.WriteAllText(src, "core");
         Assert.Equal(store.PathOf(m.Find("core")!), await store.EnsureAsync(m, m.Find("core")!, null, default));
         Assert.True(store.Has(m.Find("core")!));
+    }
+
+    [Fact]
+    public void ReleaseKey_AcceptsOnlyItsOwnSignatures()
+    {
+        using var ec = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var q = ec.ExportParameters(false).Q;
+        byte[] data = Encoding.UTF8.GetBytes("{\"schema\":1}");
+        string sig = Convert.ToBase64String(ec.SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+        string x = Convert.ToHexStringLower(q.X!), y = Convert.ToHexStringLower(q.Y!);
+
+        Assert.True(ReleaseKey.Verify(data, sig, x, y));
+        Assert.False(ReleaseKey.Verify(Encoding.UTF8.GetBytes("{\"schema\":2}"), sig, x, y));
+        Assert.False(ReleaseKey.Verify(data, sig)); // another key: the real release key
+        Assert.False(ReleaseKey.Verify(data, "not base64!", x, y));
     }
 
     [Fact]

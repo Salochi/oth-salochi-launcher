@@ -51,6 +51,12 @@ public sealed class Manifest
             if (!files.Add(mod.File)) throw new ManifestException($"{where}: another mod already installs {mod.File}");
             if (!IsSha256(mod.Sha256)) throw new ManifestException($"{where}: sha256 must be 64 hex characters");
             _ = ResolveUrl(mod.Url, where);
+            if (mod.Image != null)
+            {
+                if (!mod.Image.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) throw new ManifestException($"{where}: image must be a .png");
+                if (!IsSha256(mod.ImageSha256)) throw new ManifestException($"{where}: imageSha256 must be 64 hex characters");
+                _ = ResolveUrl(mod.Image, where + " image");
+            }
         }
         foreach (var mod in Mods)
             foreach (var r in mod.Requires)
@@ -110,6 +116,9 @@ public sealed class ModEntry
     [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
     [JsonPropertyName("size")] public long Size { get; set; }
     [JsonPropertyName("changes")] public List<ChangeEntry> Changes { get; set; } = [];
+    /// <summary>Optional picture for the launcher (a car's garage silhouette, white on transparent PNG).</summary>
+    [JsonPropertyName("image")] public string? Image { get; set; }
+    [JsonPropertyName("imageSha256")] public string? ImageSha256 { get; set; }
 
     /// <summary>The same rule as Core's mod ids: [a-z0-9_.-], 1 to 40 characters.</summary>
     public static bool IsValidId(string? id) =>

@@ -3,119 +3,229 @@
         xmlns:vm="using:Salochi.Launcher.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="640"
+        mc:Ignorable="d" d:DesignWidth="980" d:DesignHeight="660"
         x:Class="Salochi.Launcher.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/salochi.ico"
         Title="Salochi Launcher"
-        Width="960" Height="660" MinWidth="720" MinHeight="480"
-        Background="{StaticResource WindowBg}"
+        Width="980" Height="660" MinWidth="640" MinHeight="480"
+        Background="{StaticResource Pine}"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Window.DataTemplates>
-        <!-- one mod row -->
-        <DataTemplate DataType="vm:ModItemViewModel">
-            <Border Classes="card" Padding="16,12" Margin="0,0,0,8">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <CheckBox Grid.Column="0" VerticalAlignment="Top" Margin="0,0,10,0"
-                              IsChecked="{Binding IsPicked}" IsEnabled="{Binding CanToggle}"
-                              ToolTip.Tip="{Binding LockedHint}" />
-                    <StackPanel Grid.Column="1" Spacing="3">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding Version}" Classes="muted" VerticalAlignment="Bottom" FontSize="12" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}" Classes="muted" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Credits}" IsVisible="{Binding HasCredits}" Classes="muted" FontSize="12"
-                                   FontStyle="Italic" TextWrapping="Wrap" />
-                        <TextBlock IsVisible="{Binding IsNetworked}" FontSize="12" TextWrapping="Wrap"
-                                   Foreground="{StaticResource WarningStripe}"
-                                   Text="Multiplayer: everyone in a session needs the same cars." />
-                    </StackPanel>
-                    <Border Grid.Column="2" Classes="chip" VerticalAlignment="Top" Margin="12,0,0,0">
-                        <TextBlock Text="{Binding Status}" FontSize="12" Classes="muted" />
-                    </Border>
-                </Grid>
-            </Border>
-        </DataTemplate>
-
-        <!-- one banner -->
-        <DataTemplate DataType="vm:NoticeViewModel">
-            <Border Classes="card" Margin="0,0,0,8" ClipToBounds="True">
-                <Grid ColumnDefinitions="4,*,Auto">
-                    <Border Grid.Column="0" Background="{StaticResource ErrorStripe}" IsVisible="{Binding IsError}" />
-                    <Border Grid.Column="0" Background="{StaticResource WarningStripe}" IsVisible="{Binding IsWarning}" />
-                    <Border Grid.Column="0" Background="{StaticResource InfoStripe}" IsVisible="{Binding IsInfo}" />
-                    <StackPanel Grid.Column="1" Margin="14,10" Spacing="2">
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Body}" Classes="muted" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Button Grid.Column="2" Margin="0,0,12,0" VerticalAlignment="Center"
-                            Content="{Binding ActionLabel}" Command="{Binding Action}" IsVisible="{Binding HasAction}" />
-                </Grid>
-            </Border>
-        </DataTemplate>
-    </Window.DataTemplates>
-
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- header -->
-        <Grid Grid.Row="0" Margin="28,22,28,6" ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="2">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <TextBlock Text="Salochi" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource SystemAccentColor}" />
-                    <TextBlock Text="Launcher" FontSize="26" FontWeight="Light" />
+        <!-- header: the mark, the name, the pages -->
+        <Border Grid.Row="0" Padding="32,20,32,0" BorderBrush="{StaticResource Rule}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,*">
+                <Image Source="/Assets/logo.png" Width="34" Height="34" VerticalAlignment="Top" Margin="0,2,12,0" />
+                <TextBlock Grid.Column="1" Classes="title" Text="Salochi" VerticalAlignment="Top" Margin="0,0,40,0" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                    <Button Classes="tab" Classes.current="{Binding IsCars}"
+                            Command="{Binding ShowCommand}" CommandParameter="{x:Static vm:Page.Cars}">
+                        <StackPanel>
+                            <TextBlock Text="Cars" FontSize="20" />
+                            <Border Classes="blaze" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.current="{Binding IsFeatures}"
+                            Command="{Binding ShowCommand}" CommandParameter="{x:Static vm:Page.Features}">
+                        <StackPanel>
+                            <TextBlock Text="Features" FontSize="20" />
+                            <Border Classes="blaze" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="tab" Classes.current="{Binding IsGame}"
+                            Command="{Binding ShowCommand}" CommandParameter="{x:Static vm:Page.Game}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <TextBlock Text="Game" FontSize="20" />
+                                <Border IsVisible="{Binding HasProblems}" Background="{StaticResource Rust}"
+                                        CornerRadius="9" MinWidth="18" Height="18" Padding="5,0" VerticalAlignment="Center"
+                                        ToolTip.Tip="Problems to look at">
+                                    <TextBlock Text="{Binding ProblemBadge}" FontFamily="{StaticResource ContentControlThemeFontFamily}"
+                                               FontSize="12" LineHeight="18" FontWeight="SemiBold" Foreground="{StaticResource Bone}"
+                                               HorizontalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                            <Border Classes="blaze" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
-                <TextBlock Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis">
-                    <Run Text="Over The Hill  ·  " /><Run Text="{Binding GameSummary}" />
-                </TextBlock>
-            </StackPanel>
-            <Button Grid.Column="1" VerticalAlignment="Top" Content="•••" Padding="12,6" ToolTip.Tip="More">
-                <Button.Flyout>
-                    <MenuFlyout Placement="BottomEdgeAlignedRight">
-                        <MenuItem Header="Check again" Command="{Binding RefreshCommand}" />
-                        <MenuItem Header="Pick game folder…" Command="{Binding ChooseGameFolderCommand}" />
-                        <Separator />
-                        <MenuItem Header="Open game folder" Command="{Binding OpenGameFolderCommand}" />
-                        <MenuItem Header="Open the mod loader's log" Command="{Binding OpenLogCommand}" />
-                    </MenuFlyout>
-                </Button.Flyout>
-            </Button>
-        </Grid>
+            </Grid>
+        </Border>
 
-        <!-- notices and mods -->
-        <ScrollViewer Grid.Row="1" Padding="28,8,28,12">
-            <StackPanel>
-                <ItemsControl ItemsSource="{Binding Notices}" />
+        <!-- pages -->
+        <Panel Grid.Row="1">
 
-                <StackPanel IsVisible="{Binding HasMods}">
-                    <TextBlock Classes="section" Text="CORE" />
-                    <ItemsControl ItemsSource="{Binding CoreMods}" />
-                    <TextBlock Classes="section" Text="FEATURES" IsVisible="{Binding HasFeatures}" />
-                    <ItemsControl ItemsSource="{Binding FeatureMods}" />
-                    <TextBlock Classes="section" Text="CARS" IsVisible="{Binding HasCars}" />
-                    <ItemsControl ItemsSource="{Binding CarMods}" />
+            <!-- Cars -->
+            <ScrollViewer IsVisible="{Binding IsCars}" Padding="32,24,16,8">
+                <StackPanel>
+                    <TextBlock Classes="quiet" Margin="0,0,16,20" TextWrapping="Wrap" MaxWidth="640" HorizontalAlignment="Left"
+                               IsVisible="{Binding HasCars}"
+                               Text="Click a car to add it to the game or take it out. In multiplayer, everyone in the session needs the same cars." />
+                    <ItemsControl ItemsSource="{Binding Cars}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:ModItemViewModel">
+                                <ToggleButton Classes="tile" IsChecked="{Binding IsPicked}"
+                                              AutomationProperties.Name="{Binding Name}">
+                                    <Grid RowDefinitions="Auto,Auto">
+                                        <!-- the garage silhouette, on a hollow like the game's garage -->
+                                        <Border Background="{StaticResource Hollow}" CornerRadius="8,8,0,0" Height="132">
+                                            <Panel>
+                                                <Image Source="{Binding Image}" IsVisible="{Binding HasImage}" Margin="28,18" Stretch="Uniform" />
+                                                <TextBlock IsVisible="{Binding !HasImage}" Text="{Binding Name}" Classes="heading quiet"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <Border Classes="mark" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0">
+                                                    <PathIcon Classes="tick" Width="12" Height="12" Foreground="{StaticResource Pine}"
+                                                              Data="M2,7 L5.5,10.5 L12,3.5 L13.5,5 L5.5,13 L0.5,8.5 Z" />
+                                                </Border>
+                                            </Panel>
+                                        </Border>
+                                        <StackPanel Grid.Row="1" Margin="18,14,18,18" Spacing="4">
+                                            <TextBlock Classes="name" Text="{Binding Name}" />
+                                            <TextBlock Classes="quiet" Text="{Binding Description}" TextWrapping="Wrap" />
+                                            <TextBlock Classes="quiet small" Text="{Binding Credits}" IsVisible="{Binding HasCredits}"
+                                                       TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            <TextBlock Classes="small" Text="{Binding Status}" IsVisible="{Binding HasStatus}"
+                                                       Foreground="{StaticResource Trail}" Margin="0,6,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </ToggleButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel IsVisible="{Binding ListMissing}" Spacing="10" Margin="0,40,0,0" HorizontalAlignment="Left">
+                        <TextBlock Classes="heading" Text="No mod list yet" />
+                        <TextBlock Classes="quiet" TextWrapping="Wrap" MaxWidth="460"
+                                   Text="The cars appear here once the mod list downloads. The Game page says what went wrong." />
+                        <Button Classes="link" Content="Open the Game page" Command="{Binding ShowCommand}"
+                                CommandParameter="{x:Static vm:Page.Game}" />
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
 
-        <!-- footer -->
-        <Border Grid.Row="2" Background="#1B1C20" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="28,14">
+            <!-- Features -->
+            <ScrollViewer IsVisible="{Binding IsFeatures}" Padding="32,24,32,8">
+                <StackPanel MaxWidth="640" HorizontalAlignment="Left">
+                    <ItemsControl ItemsSource="{Binding Features}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:ModItemViewModel">
+                                <Border BorderBrush="{StaticResource Rule}" BorderThickness="0,0,0,1" Padding="0,16">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Spacing="4" Margin="0,0,24,0">
+                                            <TextBlock Classes="name" Text="{Binding Name}" />
+                                            <TextBlock Classes="quiet" Text="{Binding Description}" TextWrapping="Wrap" />
+                                            <TextBlock Classes="quiet small" Text="{Binding Credits}" IsVisible="{Binding HasCredits}" TextWrapping="Wrap" />
+                                            <TextBlock Classes="small" Text="{Binding Status}" IsVisible="{Binding HasStatus}"
+                                                       Foreground="{StaticResource Trail}" />
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsPicked}" VerticalAlignment="Top" Margin="0,4,0,0"
+                                                      OnContent="" OffContent="" AutomationProperties.Name="{Binding Name}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="quiet" Margin="0,24,0,0" IsVisible="{Binding !HasFeatures}"
+                               Text="No features in the mod list yet." />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Game -->
+            <ScrollViewer IsVisible="{Binding IsGame}" Padding="32,24,32,8">
+                <StackPanel MaxWidth="600" HorizontalAlignment="Left" Spacing="28">
+
+                    <ItemsControl ItemsSource="{Binding Problems}" IsVisible="{Binding HasProblems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:ProblemViewModel">
+                                <Grid ColumnDefinitions="3,*" Margin="0,0,0,14">
+                                    <Border Background="{StaticResource Rust}" CornerRadius="2" IsVisible="{Binding Blocks}" />
+                                    <Border Background="{StaticResource Lichen}" CornerRadius="2" IsVisible="{Binding !Blocks}" />
+                                    <StackPanel Grid.Column="1" Margin="16,2,0,2" Spacing="4">
+                                        <TextBlock Classes="heading" Text="{Binding Title}" />
+                                        <TextBlock Classes="quiet" Text="{Binding Body}" TextWrapping="Wrap" />
+                                        <Button Classes="plain" Margin="0,8,0,0" Content="{Binding ActionLabel}"
+                                                Command="{Binding Action}" IsVisible="{Binding HasAction}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Over The Hill" />
+                        <TextBlock Text="{Binding GameFolder}" TextWrapping="Wrap" />
+                        <TextBlock Classes="quiet" Text="{Binding GameBuild}" />
+                        <StackPanel Orientation="Horizontal" Spacing="20" Margin="0,4,0,0">
+                            <Button Classes="link" Content="Open folder" Command="{Binding OpenGameFolderCommand}" />
+                            <Button Classes="link" Content="Use another folder" Command="{Binding ChooseGameFolderCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Mod loader" />
+                        <TextBlock Text="{Binding LoaderState}" TextWrapping="Wrap" />
+                        <TextBlock Classes="quiet" TextWrapping="Wrap">
+                            <Run Text="Starting the game from Steam: " /><Run Text="{Binding SteamMode}" /><Run Text=". The last Play button you used decides." />
+                        </TextBlock>
+                        <Button Classes="link" Margin="0,4,0,0" Content="Open the log" Command="{Binding OpenLogCommand}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Salochi Core" />
+                        <TextBlock Text="{Binding CoreState}" TextWrapping="Wrap" />
+                        <TextBlock Classes="quiet" Text="{Binding CoreCredits}" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Mod list" />
+                        <TextBlock Text="{Binding ListState}" TextWrapping="Wrap" />
+                        <Button Classes="link" Margin="0,4,0,0" Content="Check again" Command="{Binding RefreshCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Panel>
+
+        <!-- footer: what Play will do, or why it can't -->
+        <Border Grid.Row="2" Background="{StaticResource Hollow}" Padding="32,16">
             <Grid ColumnDefinitions="*,Auto,Auto">
-                <StackPanel VerticalAlignment="Center" Spacing="6">
-                    <TextBlock Text="{Binding StatusText}" IsVisible="{Binding IsBusy}" />
-                    <ProgressBar Value="{Binding Progress}" Maximum="1" IsVisible="{Binding IsBusy}" MaxWidth="320" HorizontalAlignment="Left" />
-                    <TextBlock Text="{Binding LaunchMode}" Classes="muted" FontSize="12" IsVisible="{Binding !IsBusy}"
-                               ToolTip.Tip="What happens when you start the game from Steam instead of the launcher." />
-                </StackPanel>
-                <Button Grid.Column="1" Classes="secondary" Margin="0,0,10,0" Content="Play vanilla"
-                        Command="{Binding PlayVanillaCommand}"
+                <Panel VerticalAlignment="Center" Margin="0,0,24,0">
+                    <StackPanel IsVisible="{Binding IsBusy}" Spacing="8">
+                        <TextBlock Text="{Binding StatusText}" />
+                        <ProgressBar Value="{Binding Progress}" Maximum="1" MaxWidth="320" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsIdle}" Spacing="2">
+                        <!-- the last action's result, else why Play is greyed out, else what Play will start -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasMessage}">
+                            <Panel>
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsVisible="{Binding MessageIsError}"
+                                           Foreground="{StaticResource Rust}" />
+                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsVisible="{Binding !MessageIsError}" />
+                            </Panel>
+                            <Button Grid.Column="1" Classes="link" Content="Dismiss" Margin="12,0,0,0" VerticalAlignment="Top"
+                                    Command="{Binding DismissMessageCommand}" />
+                        </Grid>
+                        <Panel IsVisible="{Binding !HasMessage}">
+                            <StackPanel IsVisible="{Binding IsBlocked}" Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="{Binding BlockReason}" Foreground="{StaticResource Rust}" TextWrapping="Wrap" />
+                                <Button Classes="link" Content="See what's wrong" Command="{Binding ShowCommand}"
+                                        CommandParameter="{x:Static vm:Page.Game}" IsVisible="{Binding !IsGame}" />
+                            </StackPanel>
+                            <TextBlock IsVisible="{Binding !IsBlocked}" Text="{Binding Summary}" Classes="quiet" TextWrapping="Wrap" />
+                        </Panel>
+                    </StackPanel>
+                </Panel>
+                <Button Grid.Column="1" Classes="plain" Margin="0,0,12,0" VerticalAlignment="Center" Content="Play without mods"
+                        Command="{Binding PlayWithoutModsCommand}"
                         ToolTip.Tip="Start the game without any mods. Your mods stay installed for next time." />
-                <Button Grid.Column="2" Classes="play accent" Content="Play" Command="{Binding PlayCommand}" />
+                <Button Grid.Column="2" Classes="play accent" Content="Play" VerticalAlignment="Center" Command="{Binding PlayCommand}" />
             </Grid>
         </Border>
     </Grid>

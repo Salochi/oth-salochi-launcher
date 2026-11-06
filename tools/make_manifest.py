@@ -1,18 +1,25 @@
 """
-Builds a release folder: manifest.json plus every mod's DLL (and the pinned BepInEx zip), ready to attach to a GitHub
-release or to point the launcher at locally.
+Builds a release folder, ready to attach to a GitHub release or to point the launcher at locally:
 
-    python tools/make_manifest.py --cars ../oth-cars --out release/out [--bepinex BepInEx-...zip --bepinex-version 6.0.0-be.788]
+  manifest.json (+ .sig)   the launcher's mod list
+  mods.json (+ .sig)       the same mods in the original OverTheHillPlus format, for Salochi Core's in-game installer
+  OTH.*.dll                every mod
+  BepInEx-*.zip            the pinned mod loader (release/bepinex/, see README)
+
+    python tools/make_manifest.py --cars ../oth-cars --out release/out [--tag v1.0.0] [--no-sign]
     SalochiLauncher.exe --manifest release/out/manifest.json      # try it against local builds
 
-Download URLs are written relative to the manifest, so the same folder works locally and as release assets. With
---tag, they are absolute links to that release on GitHub instead.
+The launcher's download URLs are relative to its manifest, so the same folder works locally and as release assets;
+with --tag they are absolute links to that release. mods.json always needs absolute URLs (Core only downloads from
+this repo): without --tag they point at the latest release. Both lists are signed with the release key
+(tools/sign.cs, %USERPROFILE%\\.salochi\\release-key.pem).
 """
 import argparse
 import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 
 REPO = "https://github.com/Salochi/oth-salochi-launcher"
@@ -33,8 +40,10 @@ def main():
     ap.add_argument("--cars", required=True, help="the oth-cars checkout the DLLs were built in")
     ap.add_argument("--out", required=True)
     ap.add_argument("--tag", help="write absolute URLs to this release tag")
-    ap.add_argument("--bepinex", help="the BepInEx zip to ship (mirrored as a release asset)")
-    ap.add_argument("--bepinex-version")
+    ap.add_argument("--bepinex", default=os.path.join(here, "..", "release", "bepinex", "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788.zip"),
+                    help="the BepInEx zip to ship (mirrored as a release asset)")
+    ap.add_argument("--bepinex-version", default="6.0.0-be.788")
+    ap.add_argument("--no-sign", action="store_true", help="skip the signatures (the launcher then warns about a local list)")
     args = ap.parse_args()
 
     with open(args.src, encoding="utf-8") as f:
@@ -44,29 +53,52 @@ def main():
     def url(name):
         return f"{REPO}/releases/download/{args.tag}/{name}" if args.tag else name
 
+    def abs_url(name):
+        return f"{REPO}/releases/download/{args.tag}/{name}" if args.tag else f"{REPO}/releases/latest/download/{name}"
+
     mods = []
     for m in src["mods"]:
         dll = os.path.join(args.cars, m["build"])
         if not os.path.isfile(dll):
             sys.exit(f"{m['id']}: no build at {dll} (build oth-cars first)")
         shutil.copy2(dll, os.path.join(args.out, m["file"]))
-        entry = {k: v for k, v in m.items() if k != "build"}
+        entry = {k: v for k, v in m.items() if k not in ("build", "image")}
         entry.update(url=url(m["file"]), sha256=sha256(dll), size=os.path.getsize(dll))
+        if m.get("image"):
+            img = os.path.join(args.cars, m["image"])
+            name = m["id"] + ".png"
+            shutil.copy2(img, os.path.join(args.out, name))
+            entry.update(image=url(name), imageSha256=sha256(img))
         mods.append(entry)
 
     manifest = {"schema": 1, "testedGameBuilds": src.get("testedGameBuilds", []), "mods": mods}
-    if args.bepinex:
-        if not args.bepinex_version:
-            sys.exit("--bepinex needs --bepinex-version")
+    if args.bepinex and os.path.isfile(args.bepinex):
         name = os.path.basename(args.bepinex)
         shutil.copy2(args.bepinex, os.path.join(args.out, name))
         manifest["bepinex"] = {"version": args.bepinex_version, "url": url(name),
                                "sha256": sha256(args.bepinex), "size": os.path.getsize(args.bepinex)}
+    elif args.bepinex:
+        print(f"no BepInEx zip at {args.bepinex}: the manifest won't offer one")
 
-    with open(os.path.join(args.out, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(manifest, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    print(f"wrote {os.path.join(args.out, 'manifest.json')}: {', '.join(m['id'] for m in mods)}")
+    # Salochi Core's in-game installer reads the original OverTheHillPlus format
+    oth = {"schema": 1, "game": "over the hill", "mods": [
+        {"id": m["id"], "name": m["name"], "version": m["version"], "file": m["file"], "url": abs_url(m["file"]),
+         "sha256": m["sha256"], "size": m["size"], "requires": m.get("requires", []),
+         "description": m.get("description", ""), "category": m.get("kind", "Feature").lower(),
+         "changes": m.get("changes", [])}
+        for m in mods]}
+
+    for name, doc in (("manifest.json", manifest), ("mods.json", oth)):
+        path = os.path.join(args.out, name)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(doc, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        if not args.no_sign:
+            subprocess.run(["dotnet", "run", os.path.join(here, "sign.cs"), "--", "sign", path], check=True,
+                           stdout=subprocess.DEVNULL)
+        elif os.path.exists(path + ".sig"):
+            os.remove(path + ".sig")
+    print(f"wrote {args.out}: {', '.join(m['id'] for m in mods)}" + ("" if args.no_sign else " (signed)"))
 
 
 if __name__ == "__main__":

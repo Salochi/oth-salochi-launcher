@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Salochi.Launcher.Core;
@@ -6,6 +7,8 @@ using Salochi.Launcher.Core.Game;
 using Salochi.Launcher.Core.Mods;
 
 namespace Salochi.Launcher.ViewModels;
+
+public enum Page { Cars, Features, Game }
 
 public partial class MainViewModel : ViewModelBase
 {
@@ -19,6 +22,8 @@ public partial class MainViewModel : ViewModelBase
     private Manifest? _manifest;
     private GameLocation? _game;
     private IReadOnlyList<PluginIssue> _issues = [];
+    /// <summary>Why the mod list didn't load, kept so later checks of the game folder list it again.</summary>
+    private ProblemViewModel? _listProblem;
 
     public MainViewModel() : this(null) { }
 
@@ -28,31 +33,84 @@ public partial class MainViewModel : ViewModelBase
         _settings = LauncherSettings.Load();
     }
 
+    /// <summary>Does everything but start the game ("--no-launch", for testing).</summary>
+    public bool NoLaunch { get; init; }
+
     /// <summary>Set by the window: asks the player for a folder.</summary>
     public Func<string, Task<string?>>? PickFolder { get; set; }
 
-    public ObservableCollection<NoticeViewModel> Notices { get; } = [];
-    public ObservableCollection<ModItemViewModel> CoreMods { get; } = [];
-    public ObservableCollection<ModItemViewModel> FeatureMods { get; } = [];
-    public ObservableCollection<ModItemViewModel> CarMods { get; } = [];
-
-    [ObservableProperty] public partial string GameSummary { get; set; } = "Looking for Over The Hill…";
-    [ObservableProperty] public partial string LaunchMode { get; set; } = "";
-    [ObservableProperty] public partial string StatusText { get; set; } = "";
-    [ObservableProperty] public partial double Progress { get; set; }
-    [ObservableProperty] public partial bool IsBusy { get; set; } = true;
-    [ObservableProperty] public partial bool HasMods { get; set; }
+    // ---------------------------------------------------------------- pages
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(PlayCommand), nameof(PlayVanillaCommand))]
+    [NotifyPropertyChangedFor(nameof(IsCars), nameof(IsFeatures), nameof(IsGame))]
+    public partial Page Page { get; set; } = Page.Cars;
+
+    public bool IsCars => Page == Page.Cars;
+    public bool IsFeatures => Page == Page.Features;
+    public bool IsGame => Page == Page.Game;
+
+    [RelayCommand] private void Show(Page page) => Page = page;
+
+    public ObservableCollection<ModItemViewModel> Cars { get; } = [];
+    public ObservableCollection<ModItemViewModel> Features { get; } = [];
+    public ObservableCollection<ProblemViewModel> Problems { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProblems), nameof(ProblemBadge))]
+    public partial int ProblemCount { get; set; }
+
+    public bool HasProblems => ProblemCount > 0;
+    public string ProblemBadge => ProblemCount.ToString();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCars), nameof(HasFeatures), nameof(ListMissing))]
+    public partial bool ListLoaded { get; set; }
+
+    public bool HasCars => Cars.Count > 0;
+    public bool HasFeatures => Features.Count > 0;
+    public bool ListMissing => !ListLoaded && !IsBusy;
+
+    // ---------------------------------------------------------------- the Game page
+
+    [ObservableProperty] public partial string GameFolder { get; set; } = "Looking for Over The Hill…";
+    [ObservableProperty] public partial string GameBuild { get; set; } = "";
+    [ObservableProperty] public partial string LoaderState { get; set; } = "";
+    [ObservableProperty] public partial string SteamMode { get; set; } = "";
+    [ObservableProperty] public partial string CoreState { get; set; } = "";
+    [ObservableProperty] public partial string? CoreCredits { get; set; }
+    [ObservableProperty] public partial string ListState { get; set; } = "";
+
+    // ---------------------------------------------------------------- the footer
+
+    [ObservableProperty] public partial string Summary { get; set; } = "";
+    /// <summary>Why Play is greyed out, in a sentence; null when it isn't.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBlocked))]
+    public partial string? BlockReason { get; set; }
+    public bool IsBlocked => BlockReason != null && !IsBusy;
+
+    /// <summary>What the last action did, or why it failed; cleared by the next one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMessage))]
+    public partial string? Message { get; set; }
+    [ObservableProperty] public partial bool MessageIsError { get; set; }
+    public bool HasMessage => Message != null && !IsBusy;
+
+    [ObservableProperty] public partial string StatusText { get; set; } = "";
+    [ObservableProperty] public partial double Progress { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsBlocked), nameof(HasMessage), nameof(ListMissing))]
+    public partial bool IsBusy { get; set; } = true;
+    public bool IsIdle => !IsBusy;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PlayCommand))]
     public partial bool CanPlay { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(PlayVanillaCommand))]
-    public partial bool CanPlayVanilla { get; set; }
-
-    public bool HasFeatures => FeatureMods.Count > 0;
-    public bool HasCars => CarMods.Count > 0;
+    [NotifyCanExecuteChangedFor(nameof(PlayWithoutModsCommand))]
+    public partial bool CanPlayWithoutMods { get; set; }
 
     // ---------------------------------------------------------------- loading
 
@@ -60,30 +118,22 @@ public partial class MainViewModel : ViewModelBase
     public async Task RefreshAsync()
     {
         IsBusy = true;
-        Notices.Clear();
         StatusText = "Checking the game and the mod list…";
+        Problems.Clear();
+        _issues = [];
+        _listProblem = null;
         try
         {
             _game = LocateGame();
-            if (_game == null)
-            {
-                GameSummary = "Over The Hill wasn't found";
-                Notice(NoticeLevel.Error, "Over The Hill wasn't found",
-                    "The launcher looks through your Steam libraries. If the game is installed somewhere else, pick its folder.",
-                    "Pick game folder…", ChooseGameFolderCommand);
-            }
-            else
-            {
-                GameSummary = _game.BuildId != null ? $"{_game.Root}  ·  build {_game.BuildId}" : _game.Root;
-            }
-
             _manifest = await LoadManifestAsync();
+            ListLoaded = _manifest != null;
             BuildModList();
-            if (_game != null) ScanGame();
+            DescribeGame();
+            await LoadImagesAsync();
         }
         catch (Exception e)
         {
-            Notice(NoticeLevel.Error, "Something went wrong", e.Message);
+            Say("Something went wrong while checking the game: " + e.Message, error: true);
         }
         finally
         {
@@ -112,53 +162,84 @@ public partial class MainViewModel : ViewModelBase
             if (local != null)
             {
                 string full = Path.GetFullPath(local);
-                var m = Manifest.Parse(await File.ReadAllTextAsync(full), new Uri(full));
-                Notice(NoticeLevel.Info, "Using a local mod list", full);
+                byte[] bytes = await File.ReadAllBytesAsync(full);
+                string sigPath = full + ".sig";
+                bool signed = File.Exists(sigPath);
+                if (signed && !ReleaseKey.Verify(bytes, await File.ReadAllTextAsync(sigPath)))
+                    throw new ManifestException($"{full} doesn't match its signature");
+                var m = Manifest.Parse(System.Text.Encoding.UTF8.GetString(bytes), new Uri(full));
+                ListState = signed ? $"A local list, signed by Salochi: {full}" : $"A local list without a signature: {full}";
                 return m;
             }
-            string json = await Http.GetStringAsync(ManifestUrl);
-            return Manifest.Parse(json, new Uri(ManifestUrl));
+            byte[] data = await Http.GetByteArrayAsync(ManifestUrl);
+            string sig = await Http.GetStringAsync(ManifestUrl + ".sig");
+            if (!ReleaseKey.Verify(data, sig))
+                throw new ManifestException("the mod list on GitHub isn't signed by Salochi, so the launcher won't use it");
+            ListState = "Up to date, signed by Salochi";
+            return Manifest.Parse(System.Text.Encoding.UTF8.GetString(data), new Uri(ManifestUrl));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
-            Notice(NoticeLevel.Warning, "Couldn't reach GitHub",
-                "The mod list couldn't be downloaded, so nothing can be installed or updated right now. Play vanilla still works.",
-                "Try again", RefreshCommand);
+            ListState = "GitHub couldn't be reached";
+            _listProblem = new ProblemViewModel("The mod list couldn't be downloaded",
+                "Check your internet connection. Until the list loads, mods can't be installed or updated, but Play without mods still works.",
+                blocks: true, "Try again", RefreshCommand);
         }
         catch (Exception e) when (e is ManifestException or IOException)
         {
-            Notice(NoticeLevel.Error, "The mod list couldn't be read", e.Message);
+            ListState = "Couldn't be read";
+            _listProblem = new ProblemViewModel("The mod list couldn't be read", Capitalize(e.Message) + ".", blocks: true, "Try again", RefreshCommand);
         }
         return null;
     }
 
     private void BuildModList()
     {
-        CoreMods.Clear();
-        FeatureMods.Clear();
-        CarMods.Clear();
-        HasMods = _manifest is { Mods.Count: > 0 };
+        Cars.Clear();
+        Features.Clear();
+        OnPropertyChanged(nameof(HasCars));
+        OnPropertyChanged(nameof(HasFeatures));
         if (_manifest == null) return;
 
+        // The game folder is the record of what's picked: Core's in-game installer writes there too.
+        string? target = OurFolder();
+        var installed = target != null && Directory.Exists(target) ? PluginSync.InstalledIds(_manifest, target) : null;
         var store = Store();
-        string? target = _game != null ? Path.Combine(_game.PluginsDir, PluginScanner.LauncherFolder) : null;
-        foreach (var mod in _manifest.Mods)
+        foreach (var mod in _manifest.Mods.Where(m => m.Kind != ModKind.Core))
         {
-            bool picked = _settings.Picked == null || _settings.Picked.Contains(mod.Id, StringComparer.OrdinalIgnoreCase);
-            var item = new ModItemViewModel(mod, picked, StatusOf(mod, store, target));
+            bool picked = installed != null
+                ? installed.Contains(mod.Id, StringComparer.OrdinalIgnoreCase)
+                : _settings.Picked == null || _settings.Picked.Contains(mod.Id, StringComparer.OrdinalIgnoreCase);
+            var item = new ModItemViewModel(mod, picked, null);
+            item.Status = StatusOf(item, store, target);
             item.PickedChanged += () => OnPicked(item);
-            (mod.Kind switch { ModKind.Core => CoreMods, ModKind.Car => CarMods, _ => FeatureMods }).Add(item);
+            (mod.Kind == ModKind.Car ? Cars : Features).Add(item);
         }
-        OnPropertyChanged(nameof(HasFeatures));
         OnPropertyChanged(nameof(HasCars));
+        OnPropertyChanged(nameof(HasFeatures));
     }
 
-    private static string StatusOf(ModEntry mod, ModStore store, string? target)
+    private async Task LoadImagesAsync()
     {
-        string? installed = target != null ? Path.Combine(target, mod.File) : null;
+        if (_manifest == null) return;
+        var store = Store();
+        foreach (var item in Cars.Concat(Features))
+        {
+            string? path = await store.EnsureImageAsync(_manifest, item.Entry, CancellationToken.None);
+            if (path == null) continue;
+            try { item.Image = new Bitmap(path); }
+            catch (Exception) { /* a broken picture: the tile shows the car's name only */ }
+        }
+    }
+
+    /// <summary>What Play will do about this mod, when it's more than "nothing".</summary>
+    private static string? StatusOf(ModItemViewModel item, ModStore store, string? target)
+    {
+        if (!item.IsPicked) return null;
+        string? installed = target != null ? Path.Combine(target, item.Entry.File) : null;
         if (installed != null && File.Exists(installed))
-            return PluginSync.Plan(target!, [mod]).Install.Count == 0 ? "Installed" : "Update ready";
-        return store.Has(mod) ? "Downloaded" : "Will download";
+            return PluginSync.Plan(target!, [item.Entry]).Install.Count == 0 ? null : "Updates when you play";
+        return store.Has(item.Entry) ? "Installs when you play" : "Downloads when you play";
     }
 
     private void OnPicked(ModItemViewModel item)
@@ -175,25 +256,48 @@ public partial class MainViewModel : ViewModelBase
             foreach (var other in all.Where(m => m.IsPicked && m.Entry.Requires.Contains(item.Entry.Id, StringComparer.OrdinalIgnoreCase)))
                 other.IsPicked = false;
         }
-        _settings.Picked = all.Where(m => m.IsPicked && !m.Entry.Required).Select(m => m.Entry.Id).ToList();
+        item.Status = StatusOf(item, Store(), OurFolder());
+        _settings.Picked = all.Where(m => m.IsPicked).Select(m => m.Entry.Id).ToList();
         _settings.Save();
+        UpdateState();
     }
 
-    private IEnumerable<ModItemViewModel> AllMods() => CoreMods.Concat(FeatureMods).Concat(CarMods);
+    private IEnumerable<ModItemViewModel> AllMods() => Cars.Concat(Features);
 
-    private void ScanGame()
+    private void DescribeGame()
     {
-        var game = _game!;
-        if (_manifest is { TestedGameBuilds.Count: > 0 } && game.BuildId != null && !_manifest.TestedGameBuilds.Contains(game.BuildId))
-            Notice(NoticeLevel.Warning, "Over The Hill has updated",
-                $"These mods were tested on an earlier version of the game (you have build {game.BuildId}). They may not work until they're updated. If the game crashes, use Play vanilla.");
+        if (_listProblem != null) Problems.Add(_listProblem);
+        var core = _manifest?.Mods.FirstOrDefault(m => m.Kind == ModKind.Core);
+        CoreState = core != null ? $"Version {core.Version}. Always on: every other mod runs on it." : "Not known until the mod list loads.";
+        CoreCredits = core?.Credits;
+
+        if (_game == null)
+        {
+            GameFolder = "Not found in your Steam libraries";
+            GameBuild = "";
+            LoaderState = "";
+            SteamMode = "";
+            Problem("Over The Hill wasn't found",
+                "The launcher looks through your Steam libraries. If the game is installed somewhere else, pick its folder.",
+                blocks: true, "Pick the game folder", ChooseGameFolderCommand);
+            return;
+        }
+
+        var game = _game;
+        GameFolder = game.Root;
+        bool tested = _manifest is not { TestedGameBuilds.Count: > 0 } || game.BuildId == null || _manifest.TestedGameBuilds.Contains(game.BuildId);
+        GameBuild = game.BuildId == null ? "Unknown build" : tested ? $"Build {game.BuildId}" : $"Build {game.BuildId}, newer than the mods were tested on";
+        if (!tested)
+            Problem("Over The Hill has updated",
+                $"These mods were tested on an earlier version of the game. They may not work until they're updated. If the game crashes, use Play without mods.",
+                blocks: false);
 
         if (!BepInExInstall.IsInstalled(game))
         {
-            Notice(NoticeLevel.Info, "The mod loader will be installed",
-                $"Mods run on BepInEx {_manifest?.BepInEx?.Version ?? ""}. The launcher installs it into the game folder the first time you press Play. Play vanilla turns it off again.");
+            LoaderState = $"Not installed yet. Play installs BepInEx {_manifest?.BepInEx?.Version}".TrimEnd() + ".";
             return;
         }
+        LoaderState = "BepInEx is installed";
 
         var ourHashes = new HashSet<string>(_manifest?.Mods.Select(m => m.Sha256) ?? [], StringComparer.OrdinalIgnoreCase);
         var ourFiles = new HashSet<string>(_manifest?.Mods.Where(m => m.Kind != ModKind.Core).Select(m => m.File) ?? [], StringComparer.OrdinalIgnoreCase);
@@ -201,21 +305,23 @@ public partial class MainViewModel : ViewModelBase
         foreach (var issue in _issues)
         {
             string files = string.Join(", ", issue.Files.Select(f => f.RelativePath));
+            var move = new AsyncRelayCommand(() => MoveAsideAsync(issue));
             switch (issue.Kind)
             {
                 case PluginIssueKind.ForeignCore:
-                    Notice(NoticeLevel.Error, "The original OverTheHillPlus is installed",
-                        $"Salochi mods run on their own version of the OverTheHillPlus Core. With both installed, only one loads, and the game may crash or lose features. The launcher can move the original into a backup folder. Nothing is deleted. ({files})",
-                        "Move it aside", MoveAsideCommand);
+                    Problem("The original OverTheHillPlus is installed",
+                        $"Salochi mods run on their own version of the OverTheHillPlus Core. With both installed only one of them loads, and the game may crash. Moving the original into a backup folder fixes this, and nothing is deleted. Found: {files}.",
+                        blocks: true, "Move to backup", move);
                     break;
                 case PluginIssueKind.LooseSalochiCopies:
-                    Notice(NoticeLevel.Error, "Old copies of Salochi mods found",
-                        $"These would load next to the launcher's copies: {files}. The launcher can move them into a backup folder.",
-                        "Move them aside", MoveAsideCommand);
+                    Problem("Old copies of Salochi mods are installed",
+                        $"They would load alongside the launcher's copies. Moving them into a backup folder fixes this. Found: {files}.",
+                        blocks: true, "Move to backup", move);
                     break;
                 case PluginIssueKind.OverTheHillPlusMods:
-                    Notice(NoticeLevel.Warning, "Other OTH mods are installed",
-                        $"The launcher didn't install these and leaves them alone: {files}. Mods made for the original OverTheHillPlus may not work with Salochi Core.");
+                    Problem("Other OTH mods are installed",
+                        $"The launcher didn't install these and leaves them alone. Mods made for the original OverTheHillPlus may not work with Salochi Core. Found: {files}.",
+                        blocks: false);
                     break;
             }
         }
@@ -226,61 +332,63 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanPlay))]
     private async Task PlayAsync()
     {
-        if (_game == null || _manifest == null) return;
-        if (!EnsureClosed()) return;
+        if (_game == null || _manifest == null || !EnsureClosed()) return;
+        var game = _game;
+        var manifest = _manifest;
         await RunAsync(async ct =>
         {
-            var game = _game;
             if (!BepInExInstall.IsInstalled(game))
             {
                 StatusText = "Installing the mod loader…";
-                await BepInExInstall.InstallAsync(game, _manifest, LauncherSettings.DataDir, Http, new Progress<double>(p => Progress = p), ct);
+                await BepInExInstall.InstallAsync(game, manifest, LauncherSettings.DataDir, Http, new Progress<double>(p => Progress = p), ct);
             }
 
-            var picked = AllMods().Where(m => m.IsPicked).Select(m => m.Entry.Id);
-            var mods = PluginSync.Resolve(_manifest, picked);
+            var mods = PluginSync.Resolve(manifest, AllMods().Where(m => m.IsPicked).Select(m => m.Entry.Id));
             var store = Store();
             for (int i = 0; i < mods.Count; i++)
             {
                 if (store.Has(mods[i])) continue;
                 StatusText = $"Downloading {mods[i].Name}…";
                 int n = i;
-                await store.EnsureAsync(_manifest, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), ct);
+                await store.EnsureAsync(manifest, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), ct);
             }
 
             StatusText = "Installing mods…";
-            string target = Path.Combine(game.PluginsDir, PluginScanner.LauncherFolder);
-            PluginSync.Apply(target, PluginSync.Plan(target, mods), store.PathOf);
+            string target = OurFolder()!;
+            PluginSync.Apply(target, PluginSync.Plan(target, mods, manifest.Mods), store.PathOf);
             DoorstopConfig.Write(game.Root, true);
 
             StatusText = "Starting Over The Hill…";
-            GameProcess.LaunchThroughSteam();
-        });
+            if (!NoLaunch) GameProcess.LaunchThroughSteam();
+        }, done: "Over The Hill is starting with your mods.");
     }
 
-    [RelayCommand(CanExecute = nameof(CanPlayVanilla))]
-    private async Task PlayVanillaAsync()
+    [RelayCommand(CanExecute = nameof(CanPlayWithoutMods))]
+    private async Task PlayWithoutModsAsync()
     {
-        if (_game == null) return;
-        if (!EnsureClosed()) return;
-        await RunAsync(ct =>
+        if (_game == null || !EnsureClosed()) return;
+        var game = _game;
+        await RunAsync(_ =>
         {
-            if (DoorstopConfig.Read(_game.Root) != null) DoorstopConfig.Write(_game.Root, false);
+            if (DoorstopConfig.Read(game.Root) != null) DoorstopConfig.Write(game.Root, false);
             StatusText = "Starting Over The Hill without mods…";
-            GameProcess.LaunchThroughSteam();
+            if (!NoLaunch) GameProcess.LaunchThroughSteam();
             return Task.CompletedTask;
-        });
+        }, done: "Over The Hill is starting without mods. Your mods stay installed for next time.");
     }
 
-    [RelayCommand]
-    private async Task MoveAsideAsync()
+    private async Task MoveAsideAsync(PluginIssue issue)
     {
-        if (_game == null) return;
-        if (!EnsureClosed()) return;
-        var files = _issues.Where(i => PluginScanner.Blocks(i.Kind)).SelectMany(i => i.Files).ToList();
-        string backup = PluginScanner.MoveAside(_game.BepInExDir, files, DateTime.Now);
+        if (_game == null || !EnsureClosed()) return;
+        string backup;
+        try { backup = PluginScanner.MoveAside(_game.BepInExDir, issue.Files, DateTime.Now); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say("The files couldn't be moved: " + e.Message, error: true);
+            return;
+        }
         await RefreshAsync();
-        Notice(NoticeLevel.Info, "Moved aside", $"{files.Count} file(s) are in {backup}. Move them back into BepInEx\\plugins to undo.");
+        Say($"Moved {issue.Files.Count} file{(issue.Files.Count == 1 ? "" : "s")} to {backup}. To undo, move them back into BepInEx\\plugins.");
     }
 
     [RelayCommand]
@@ -291,7 +399,7 @@ public partial class MainViewModel : ViewModelBase
         if (dir == null) return;
         if (!File.Exists(Path.Combine(dir, GameLocation.ExeName)))
         {
-            Notice(NoticeLevel.Error, "That isn't the game folder", $"There's no \"{GameLocation.ExeName}\" in {dir}.");
+            Say($"That folder doesn't have \"{GameLocation.ExeName}\" in it. Pick the folder the game is installed in.", error: true);
             return;
         }
         _settings.GameRoot = dir;
@@ -313,21 +421,26 @@ public partial class MainViewModel : ViewModelBase
         GameProcess.OpenFolder(File.Exists(log) ? log : _game.BepInExDir);
     }
 
+    [RelayCommand] private void DismissMessage() => Message = null;
+
     // ---------------------------------------------------------------- helpers
 
-    private async Task RunAsync(Func<CancellationToken, Task> work)
+    private async Task RunAsync(Func<CancellationToken, Task> work, string done)
     {
+        Message = null;
         IsBusy = true;
         UpdateState();
         Progress = 0;
+        bool ok = false;
         try
         {
             await work(CancellationToken.None);
             await Task.Delay(1500); // leave "Starting…" up while Steam picks the launch up
+            ok = true;
         }
         catch (Exception e)
         {
-            Notice(NoticeLevel.Error, "That didn't work", e.Message);
+            Say(Capitalize(e.Message.TrimEnd('.')) + ".", error: true);
         }
         finally
         {
@@ -335,32 +448,60 @@ public partial class MainViewModel : ViewModelBase
             StatusText = "";
             Progress = 0;
             BuildModList();
+            Problems.Clear();
+            DescribeGame();
+            await LoadImagesAsync();
             UpdateState();
+            if (ok) Say(done);
         }
     }
 
     private bool EnsureClosed()
     {
         if (!GameProcess.IsRunning()) return true;
-        Notice(NoticeLevel.Error, "Over The Hill is running", "Close the game first: Windows doesn't let the launcher change mod files while the game has them open.");
+        Say("Close Over The Hill first. Windows doesn't let the launcher change mod files while the game is running.", error: true);
         return false;
     }
 
     private void UpdateState()
     {
-        bool blocked = _issues.Any(i => PluginScanner.Blocks(i.Kind));
-        CanPlay = !IsBusy && _game != null && _manifest != null && !blocked;
-        CanPlayVanilla = !IsBusy && _game != null;
-        LaunchMode = _game == null ? "" : DoorstopConfig.Read(_game.Root) switch
+        ProblemCount = Problems.Count;
+        var blocking = Problems.FirstOrDefault(p => p.Blocks);
+        BlockReason = blocking == null ? null : Problems.Count(p => p.Blocks) == 1
+            ? $"{blocking.Title}, so mods can't start yet."
+            : $"{Problems.Count(p => p.Blocks)} problems need fixing before you can play with mods.";
+        CanPlay = !IsBusy && _game != null && _manifest != null && blocking == null;
+        CanPlayWithoutMods = !IsBusy && _game != null;
+        OnPropertyChanged(nameof(ListMissing));
+
+        var on = AllMods().Where(m => m.IsPicked).Select(m => m.Name).ToList();
+        Summary = on.Count switch
         {
-            null => "Mod loader not installed",
-            true => "Steam launches modded",
-            false => "Steam launches vanilla",
+            0 => "Salochi Core only",
+            1 => $"With {on[0]}",
+            2 => $"With {on[0]} and {on[1]}",
+            _ => $"With {string.Join(", ", on.Take(on.Count - 1))} and {on[^1]}",
+        };
+        SteamMode = _game == null ? "" : DoorstopConfig.Read(_game.Root) switch
+        {
+            null => "without mods, until the mod loader is installed",
+            true => "with mods",
+            false => "without mods",
         };
     }
 
-    private void Notice(NoticeLevel level, string title, string body, string? actionLabel = null, IAsyncRelayCommand? action = null) =>
-        Notices.Add(new NoticeViewModel(level, title, body, actionLabel, action));
+    private void Problem(string title, string body, bool blocks, string? actionLabel = null, IAsyncRelayCommand? action = null) =>
+        Problems.Add(new ProblemViewModel(title, body, blocks, actionLabel, action));
+
+    private void Say(string text, bool error = false)
+    {
+        Message = text;
+        MessageIsError = error;
+    }
+
+    private string? OurFolder() => _game != null ? Path.Combine(_game.PluginsDir, PluginScanner.LauncherFolder) : null;
+
+    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     private static ModStore Store() => new(LauncherSettings.DataDir, Http);
 

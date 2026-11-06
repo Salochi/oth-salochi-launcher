@@ -26,6 +26,21 @@ public sealed class ModStore(string root, HttpClient http)
         return dest;
     }
 
+    /// <summary>The mod's picture in the store (downloaded first when missing), or null when it has none or the
+    /// download failed: a picture is never worth an error.</summary>
+    public async Task<string?> EnsureImageAsync(Manifest manifest, ModEntry mod, CancellationToken ct)
+    {
+        if (mod.Image == null || mod.ImageSha256 == null) return null;
+        string dest = Path.Combine(Root, "images", mod.ImageSha256 + ".png");
+        if (File.Exists(dest)) return dest;
+        try
+        {
+            await DownloadVerifiedAsync(http, manifest.ResolveUrl(mod.Image, $"mod '{mod.Id}' image"), dest, mod.ImageSha256, 0, null, ct);
+            return dest;
+        }
+        catch (Exception e) when (e is IOException or HttpRequestException or TaskCanceledException or ManifestException) { return null; }
+    }
+
     /// <summary>Downloads <paramref name="url"/> (or copies it, for a file:// URL while developing) to
     /// <paramref name="dest"/> through a .part file, and only keeps it when size and SHA-256 match.</summary>
     public static async Task DownloadVerifiedAsync(HttpClient http, Uri url, string dest, string sha256, long size, IProgress<double>? progress, CancellationToken ct)
