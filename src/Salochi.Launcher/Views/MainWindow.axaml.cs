@@ -21,5 +21,6 @@ public partial class MainWindow : Window
             return picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
         };
         await vm.RefreshAsync();
+        await vm.AfterStartAsync();
     }
 }

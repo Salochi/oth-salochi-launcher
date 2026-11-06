@@ -5,6 +5,7 @@ Builds a release folder, ready to attach to a GitHub release or to point the lau
   mods.json (+ .sig)       the same mods in the original OverTheHillPlus format, for Salochi Core's in-game installer
   OTH.*.dll                every mod
   BepInEx-*.zip            the pinned mod loader (release/bepinex/, see README)
+  launcher.json (+ .sig)   the newest launcher build, and SalochiLauncher.exe itself (from dotnet publish)
 
     python tools/make_manifest.py --cars ../oth-cars --out release/out [--tag v1.0.0] [--no-sign]
     SalochiLauncher.exe --manifest release/out/manifest.json      # try it against local builds
@@ -18,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +45,10 @@ def main():
     ap.add_argument("--bepinex", default=os.path.join(here, "..", "release", "bepinex", "BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.788.zip"),
                     help="the BepInEx zip to ship (mirrored as a release asset)")
     ap.add_argument("--bepinex-version", default="6.0.0-be.788")
+    ap.add_argument("--launcher", default=os.path.join(here, "..", "src", "Salochi.Launcher", "bin", "Release", "net10.0", "win-x64", "publish", "SalochiLauncher.exe"),
+                    help="the published launcher exe (dotnet publish src/Salochi.Launcher -c Release)")
+    ap.add_argument("--launcher-version", help="default: <Version> in Directory.Build.props")
+    ap.add_argument("--notes", default="", help="what changed in the launcher, one or two sentences")
     ap.add_argument("--no-sign", action="store_true", help="skip the signatures (the launcher then warns about a local list)")
     args = ap.parse_args()
 
@@ -88,7 +94,20 @@ def main():
          "changes": m.get("changes", [])}
         for m in mods]}
 
-    for name, doc in (("manifest.json", manifest), ("mods.json", oth)):
+    docs = [("manifest.json", manifest), ("mods.json", oth)]
+    if args.launcher and os.path.isfile(args.launcher):
+        version = args.launcher_version
+        if not version:
+            props = open(os.path.join(here, "..", "Directory.Build.props"), encoding="utf-8").read()
+            version = re.search(r"<Version>([^<]+)</Version>", props).group(1)
+        shutil.copy2(args.launcher, os.path.join(args.out, "SalochiLauncher.exe"))
+        docs.append(("launcher.json", {"schema": 1, "version": version, "url": url("SalochiLauncher.exe"),
+                                       "sha256": sha256(args.launcher), "size": os.path.getsize(args.launcher),
+                                       "notes": args.notes}))
+    elif args.launcher:
+        print(f"no launcher at {args.launcher} (dotnet publish first): no launcher.json this time")
+
+    for name, doc in docs:
         path = os.path.join(args.out, name)
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(doc, f, indent=2, ensure_ascii=False)
@@ -98,7 +117,8 @@ def main():
                            stdout=subprocess.DEVNULL)
         elif os.path.exists(path + ".sig"):
             os.remove(path + ".sig")
-    print(f"wrote {args.out}: {', '.join(m['id'] for m in mods)}" + ("" if args.no_sign else " (signed)"))
+    print(f"wrote {args.out}: {', '.join(m['id'] for m in mods)}" + (", launcher" if len(docs) > 2 else "") +
+          ("" if args.no_sign else " (signed)"))
 
 
 if __name__ == "__main__":

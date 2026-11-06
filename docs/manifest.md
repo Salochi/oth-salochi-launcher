@@ -58,3 +58,22 @@ dotnet run tools/sign.cs -- sign <file>     # make_manifest.py does this for bot
 
 The public half is in `src/Salochi.Launcher.Core/Mods/ReleaseKey.cs` and in oth-cars' `src/Core/Install/ReleaseKey.cs`.
 Back up the private key: losing it means a new key, which needs a launcher and Core update.
+
+# launcher.json
+
+The newest launcher build, published (and signed, as `launcher.json.sig`) next to `manifest.json`. Its format is fixed
+at schema 1 for good, so every launcher ever released can read it and find its way to the current build.
+
+```json
+{
+  "schema": 1,
+  "version": "0.2.0",
+  "url": "SalochiLauncher.exe",
+  "sha256": "…",
+  "size": 49075991,
+  "notes": "One or two sentences on what changed."
+}
+```
+
+`version` is plain numbers (`1.2.3`), with no pre-release tags. The launcher updates when it's greater than its own
+version. `url` follows the same rules as a mod's.

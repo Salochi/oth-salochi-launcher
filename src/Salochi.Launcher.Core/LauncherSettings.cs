@@ -11,6 +11,11 @@ public sealed class LauncherSettings
     public List<string>? Picked { get; set; }
     /// <summary>A manifest to read instead of the published one (a local file while developing).</summary>
     public string? ManifestOverride { get; set; }
+    /// <summary>Install a newer launcher as soon as one is published.</summary>
+    public bool AutoUpdateLauncher { get; set; } = true;
+    /// <summary>Install newer versions of the installed mods as soon as they're published; off: Play keeps the
+    /// versions in the game folder until the player updates them.</summary>
+    public bool AutoUpdateMods { get; set; } = true;
 
     public static string DataDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Salochi", "Launcher");

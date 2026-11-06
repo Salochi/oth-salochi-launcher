@@ -189,6 +189,41 @@
                         <TextBlock Text="{Binding ListState}" TextWrapping="Wrap" />
                         <Button Classes="link" Margin="0,4,0,0" Content="Check again" Command="{Binding RefreshCommand}" />
                     </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="heading" Text="Updates" />
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                            <StackPanel Spacing="2" Margin="0,0,24,0">
+                                <TextBlock Text="Update the launcher automatically" />
+                                <TextBlock Classes="quiet" TextWrapping="Wrap">
+                                    <Run Text="This is " /><Run Text="{Binding LauncherVersion}" /><Run Text=". " /><Run Text="{Binding LauncherUpdateText}" />
+                                </TextBlock>
+                                <Button Classes="plain" Margin="0,8,0,0" Content="Update and restart"
+                                        Command="{Binding UpdateLauncherCommand}" IsEnabled="{Binding CanUpdateLauncher}"
+                                        IsVisible="{Binding HasLauncherUpdate}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Top" OnContent="" OffContent=""
+                                          IsChecked="{Binding AutoUpdateLauncher}"
+                                          AutomationProperties.Name="Update the launcher automatically" />
+                        </Grid>
+
+                        <Border Height="1" Background="{StaticResource Rule}" Margin="0,10" />
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2" Margin="0,0,24,0">
+                                <TextBlock Text="Update mods automatically" />
+                                <TextBlock Classes="quiet" TextWrapping="Wrap"
+                                           Text="New versions install as soon as you open the launcher. When this is off, Play keeps the versions you have. In multiplayer, everyone needs the same version of each car." />
+                                <TextBlock Classes="quiet" Margin="0,6,0,0" Text="{Binding ModUpdatesText}" TextWrapping="Wrap" />
+                                <Button Classes="plain" Margin="0,8,0,0" Content="Update mods"
+                                        Command="{Binding UpdateModsCommand}" IsVisible="{Binding HasModUpdates}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Top" OnContent="" OffContent=""
+                                          IsChecked="{Binding AutoUpdateMods}"
+                                          AutomationProperties.Name="Update mods automatically" />
+                        </Grid>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </Panel>

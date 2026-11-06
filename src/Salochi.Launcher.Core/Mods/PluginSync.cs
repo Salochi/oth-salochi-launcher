@@ -36,14 +36,16 @@ public static class PluginSync
 
     /// <param name="managed">Every mod in the manifest. Only their files are ever removed: anything else in the folder
     /// (a personal build a dev deploy put there, Core's .pending queue) is left alone.</param>
-    public static SyncPlan Plan(string targetDir, IReadOnlyList<ModEntry> mods, IEnumerable<ModEntry>? managed = null)
+    /// <param name="updateInstalled">False: a mod already in the folder stays as it is, even when the manifest has
+    /// another version (the player switched automatic mod updates off). Only missing mods get installed.</param>
+    public static SyncPlan Plan(string targetDir, IReadOnlyList<ModEntry> mods, IEnumerable<ModEntry>? managed = null, bool updateInstalled = true)
     {
         var install = new List<ModEntry>();
         var keep = new List<ModEntry>();
         foreach (var m in mods)
         {
             string p = Path.Combine(targetDir, m.File);
-            if (File.Exists(p) && string.Equals(FileUtil.Sha256(p), m.Sha256, StringComparison.OrdinalIgnoreCase)) keep.Add(m);
+            if (File.Exists(p) && (!updateInstalled || IsCurrent(p, m))) keep.Add(m);
             else install.Add(m);
         }
         var wanted = new HashSet<string>(mods.Select(m => m.File), StringComparer.OrdinalIgnoreCase);
@@ -54,6 +56,13 @@ public static class PluginSync
             .ToList();
         return new SyncPlan(install, remove, keep);
     }
+
+    /// <summary>The installed mods whose file isn't the manifest's version: the updates waiting.</summary>
+    public static IReadOnlyList<ModEntry> Outdated(Manifest manifest, string targetDir) =>
+        manifest.Mods.Where(m => File.Exists(Path.Combine(targetDir, m.File)) && !IsCurrent(Path.Combine(targetDir, m.File), m)).ToList();
+
+    private static bool IsCurrent(string path, ModEntry m) =>
+        string.Equals(FileUtil.Sha256(path), m.Sha256, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Applies <paramref name="plan"/>: each install copies the store's file in (through a temp name, then a
     /// rename), each removal deletes the file. The game must be closed: Windows locks loaded DLLs.</summary>

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Salochi.Launcher.Core;
 using Salochi.Launcher.Core.Game;
 using Salochi.Launcher.Core.Mods;
+using Salochi.Launcher.Core.Updates;
 
 namespace Salochi.Launcher.ViewModels;
 
@@ -12,8 +13,12 @@ public enum Page { Cars, Features, Game }
 
 public partial class MainViewModel : ViewModelBase
 {
-    /// <summary>The published mod list. Each release attaches manifest.json; "latest" always points at the newest.</summary>
-    public const string ManifestUrl = "https://github.com/Salochi/oth-salochi-launcher/releases/latest/download/manifest.json";
+    /// <summary>Where every release's files are: "latest" always points at the newest release.</summary>
+    public const string ReleaseBase = "https://github.com/Salochi/oth-salochi-launcher/releases/latest/download/";
+    /// <summary>The published mod list.</summary>
+    public const string ManifestUrl = ReleaseBase + "manifest.json";
+    /// <summary>The newest launcher build (see <see cref="LauncherRelease"/>).</summary>
+    public const string LauncherUrl = ReleaseBase + "launcher.json";
 
     private static readonly HttpClient Http = CreateHttp();
 
@@ -24,6 +29,9 @@ public partial class MainViewModel : ViewModelBase
     private IReadOnlyList<PluginIssue> _issues = [];
     /// <summary>Why the mod list didn't load, kept so later checks of the game folder list it again.</summary>
     private ProblemViewModel? _listProblem;
+    private LauncherRelease? _launcherRelease;
+    private bool _selfUpdateTried;
+    private static readonly Version Current = LauncherRelease.Normalize(typeof(MainViewModel).Assembly.GetName().Version ?? new Version(0, 0));
 
     public MainViewModel() : this(null) { }
 
@@ -35,6 +43,18 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Does everything but start the game ("--no-launch", for testing).</summary>
     public bool NoLaunch { get; init; }
+
+    /// <summary>The command line, passed on when the launcher restarts after updating itself.</summary>
+    public string[] Args { get; init; } = [];
+
+    /// <summary>The version this launcher replaced, when it was started by its own update ("--updated-from").</summary>
+    public string? UpdatedFrom { get; init; }
+
+    /// <summary>Why the last update didn't go in, when the new launcher couldn't take the old one's place ("--update-failed").</summary>
+    public string? UpdateFailed { get; init; }
+
+    /// <summary>Set by the app: closes the launcher (after it started its updated self).</summary>
+    public Action? Shutdown { get; set; }
 
     /// <summary>Set by the window: asks the player for a folder.</summary>
     public Func<string, Task<string?>>? PickFolder { get; set; }
@@ -79,6 +99,42 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] public partial string CoreState { get; set; } = "";
     [ObservableProperty] public partial string? CoreCredits { get; set; }
     [ObservableProperty] public partial string ListState { get; set; } = "";
+
+    // ---------------------------------------------------------------- updates (on the Game page)
+
+    public string LauncherVersion => "version " + Current.ToString(3);
+    [ObservableProperty] public partial string LauncherUpdateText { get; set; } = "";
+    [ObservableProperty] public partial bool HasLauncherUpdate { get; set; }
+    [ObservableProperty] public partial bool CanUpdateLauncher { get; set; }
+    [ObservableProperty] public partial string ModUpdatesText { get; set; } = "";
+    [ObservableProperty] public partial bool HasModUpdates { get; set; }
+
+    public bool AutoUpdateLauncher
+    {
+        get => _settings.AutoUpdateLauncher;
+        set
+        {
+            if (_settings.AutoUpdateLauncher == value) return;
+            _settings.AutoUpdateLauncher = value;
+            _settings.Save();
+            OnPropertyChanged();
+        }
+    }
+
+    public bool AutoUpdateMods
+    {
+        get => _settings.AutoUpdateMods;
+        set
+        {
+            if (_settings.AutoUpdateMods == value) return;
+            _settings.AutoUpdateMods = value;
+            _settings.Save();
+            OnPropertyChanged();
+            BuildModList(); // the tiles' "Version x is available" / "Updates when you play"
+            _ = LoadImagesAsync();
+            UpdateState();
+        }
+    }
 
     // ---------------------------------------------------------------- the footer
 
@@ -126,14 +182,18 @@ public partial class MainViewModel : ViewModelBase
         {
             _game = LocateGame();
             _manifest = await LoadManifestAsync();
+            if (await CheckLauncherAsync()) return; // restarting into the new version
             ListLoaded = _manifest != null;
             BuildModList();
             DescribeGame();
+            if (_settings.AutoUpdateMods) await UpdateModsQuietlyAsync();
+            DescribeModUpdates();
             await LoadImagesAsync();
         }
         catch (Exception e)
         {
-            Say("Something went wrong while checking the game: " + e.Message, error: true);
+            LauncherLog.Error("refresh", e);
+            Say("Something went wrong while checking the game: " + LauncherLog.Describe(e) + ".", error: true);
         }
         finally
         {
@@ -153,6 +213,182 @@ public partial class MainViewModel : ViewModelBase
         var found = SteamLibrary.FindGame();
         return found is { LooksValid: true } ? found : null;
     }
+
+    // ---------------------------------------------------------------- updates
+
+    /// <summary>
+    /// Checks launcher.json. With a newer build out and automatic updates on, installs it and restarts (true: the
+    /// launcher is closing). Otherwise it's offered on the Game page.
+    /// </summary>
+    private async Task<bool> CheckLauncherAsync()
+    {
+        HasLauncherUpdate = false;
+        try { _launcherRelease = await LoadLauncherReleaseAsync(); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or ManifestException or IOException)
+        {
+            LauncherLog.Error("launcher.json", e);
+            LauncherUpdateText = "Couldn't check for a newer launcher: " + LauncherLog.Describe(e) + ".";
+            return false;
+        }
+        if (_launcherRelease == null || !_launcherRelease.IsNewerThan(Current))
+        {
+            LauncherUpdateText = "Up to date.";
+            return false;
+        }
+
+        HasLauncherUpdate = true;
+        CanUpdateLauncher = SelfUpdater.CurrentExe() != null;
+        string v = _launcherRelease.ParsedVersion.ToString(3);
+        LauncherUpdateText = CanUpdateLauncher
+            ? $"Version {v} is available. {_launcherRelease.Notes}".TrimEnd()
+            : $"Version {v} is available. This is a development build, which doesn't update itself.";
+        // Once per run, and never right after an update: a release that still looks older can't loop.
+        if (_settings.AutoUpdateLauncher && CanUpdateLauncher && !_selfUpdateTried && UpdatedFrom == null && UpdateFailed == null)
+            return await InstallLauncherUpdateAsync();
+        if (!_settings.AutoUpdateLauncher)
+            Say($"Salochi Launcher {v} is available. Update it from the Game page.");
+        return false;
+    }
+
+    private async Task<LauncherRelease?> LoadLauncherReleaseAsync()
+    {
+        string? local = _manifestArg ?? _settings.ManifestOverride;
+        if (local != null)
+        {
+            // next to a local manifest, when one was made with it
+            string path = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(local))!, "launcher.json");
+            if (!File.Exists(path)) return null;
+            byte[] bytes = await File.ReadAllBytesAsync(path);
+            if (File.Exists(path + ".sig") && !ReleaseKey.Verify(bytes, await File.ReadAllTextAsync(path + ".sig")))
+                throw new ManifestException("launcher.json doesn't match its signature");
+            return LauncherRelease.Parse(System.Text.Encoding.UTF8.GetString(bytes), new Uri(path));
+        }
+        using var resp = await Http.GetAsync(LauncherUrl);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // no launcher published yet
+        resp.EnsureSuccessStatusCode();
+        byte[] data = await resp.Content.ReadAsByteArrayAsync();
+        if (!ReleaseKey.Verify(data, await Http.GetStringAsync(LauncherUrl + ".sig")))
+            throw new ManifestException("launcher.json on GitHub isn't signed by Salochi");
+        return LauncherRelease.Parse(System.Text.Encoding.UTF8.GetString(data), new Uri(LauncherUrl));
+    }
+
+    [RelayCommand]
+    private async Task UpdateLauncherAsync()
+    {
+        Message = null;
+        IsBusy = true;
+        UpdateState();
+        try { await InstallLauncherUpdateAsync(); }
+        finally
+        {
+            IsBusy = false;
+            StatusText = "";
+            UpdateState();
+        }
+    }
+
+    /// <summary>Downloads the new launcher, swaps it in and starts it. True when the launcher is now closing.</summary>
+    private async Task<bool> InstallLauncherUpdateAsync()
+    {
+        string? exe = SelfUpdater.CurrentExe();
+        if (_launcherRelease == null || exe == null) return false;
+        _selfUpdateTried = true;
+        string v = _launcherRelease.ParsedVersion.ToString(3);
+        try
+        {
+            StatusText = $"Updating the launcher to version {v}…";
+            Progress = 0;
+            string fresh = await SelfUpdater.DownloadAsync(_launcherRelease, LauncherSettings.DataDir, Http, new Progress<double>(p => Progress = p), CancellationToken.None);
+            LauncherLog.Info($"updating {exe} from {Current.ToString(3)} to {v}: handing over to {fresh}");
+            SelfUpdater.HandOver(fresh, exe, Current.ToString(3), Args);
+            Shutdown?.Invoke();
+            return true;
+        }
+        catch (Exception e)
+        {
+            LauncherLog.Error("launcher update", e);
+            Say($"The launcher couldn't update itself to version {v}: {LauncherLog.Describe(e)}. It keeps running as version {Current.ToString(3)}.", error: true);
+            return false;
+        }
+    }
+
+    /// <summary>Runs once the window is up: tidies after an update and says it happened.</summary>
+    public async Task AfterStartAsync()
+    {
+        if (SelfUpdater.CurrentExe() is { } exe) await SelfUpdater.CleanUpAsync(exe);
+        if (UpdateFailed != null)
+            Say($"The launcher couldn't update itself: {UpdateFailed.TrimEnd('.')}. It tries again next time it opens.", error: true);
+        else if (UpdatedFrom != null && !MessageIsError)
+            Say($"The launcher updated itself to version {Current.ToString(3)}." + (Message != null ? " " + Message : ""));
+    }
+
+    /// <summary>Installs newer versions of the mods in the game folder, when the game is closed and nothing blocks
+    /// it, and says which ones it updated.</summary>
+    private async Task UpdateModsQuietlyAsync()
+    {
+        string? target = OurFolder();
+        if (_manifest == null || target == null || !Directory.Exists(target)) return;
+        if (Problems.Any(p => p.Blocks) || GameProcess.IsRunning()) return;
+        var outdated = PluginSync.Outdated(_manifest, target);
+        if (outdated.Count == 0) return;
+        try
+        {
+            await InstallUpdatesAsync(outdated);
+            Say("Updated " + JoinNames(outdated.Select(m => $"{m.Name} to version {m.Version}")) + ".");
+        }
+        catch (Exception e) when (e is IOException or HttpRequestException or TaskCanceledException or UnauthorizedAccessException or ManifestException)
+        {
+            LauncherLog.Error("mod updates", e);
+            Say("Mod updates couldn't be installed: " + LauncherLog.Describe(e) + ". Play tries again.", error: true);
+        }
+        BuildModList();
+    }
+
+    private async Task InstallUpdatesAsync(IReadOnlyList<ModEntry> mods)
+    {
+        var store = Store();
+        for (int i = 0; i < mods.Count; i++)
+        {
+            StatusText = $"Updating {mods[i].Name}…";
+            int n = i;
+            await store.EnsureAsync(_manifest!, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), CancellationToken.None);
+        }
+        string target = OurFolder()!;
+        PluginSync.Apply(target, PluginSync.Plan(target, mods, mods), store.PathOf);
+    }
+
+    [RelayCommand]
+    private async Task UpdateModsAsync()
+    {
+        string? target = OurFolder();
+        if (_manifest == null || target == null || !EnsureClosed()) return;
+        var outdated = PluginSync.Outdated(_manifest, target);
+        string done = "Updated " + JoinNames(outdated.Select(m => $"{m.Name} to version {m.Version}")) + ".";
+        await RunAsync(_ => InstallUpdatesAsync(outdated), done, launches: false);
+    }
+
+    private void DescribeModUpdates()
+    {
+        string? target = OurFolder();
+        var outdated = _manifest != null && target != null && Directory.Exists(target) ? PluginSync.Outdated(_manifest, target) : [];
+        HasModUpdates = outdated.Count > 0;
+        ModUpdatesText = outdated.Count == 0
+            ? "Your mods are up to date."
+            : $"Updates are available for {JoinNames(outdated.Select(m => m.Name))}.";
+    }
+
+    private static string JoinNames(IEnumerable<string> names)
+    {
+        var l = names.ToList();
+        return l.Count switch
+        {
+            0 => "",
+            1 => l[0],
+            _ => string.Join(", ", l.Take(l.Count - 1)) + " and " + l[^1],
+        };
+    }
+
+    // ---------------------------------------------------------------- the mod list
 
     private async Task<Manifest?> LoadManifestAsync()
     {
@@ -211,7 +447,7 @@ public partial class MainViewModel : ViewModelBase
                 ? installed.Contains(mod.Id, StringComparer.OrdinalIgnoreCase)
                 : _settings.Picked == null || _settings.Picked.Contains(mod.Id, StringComparer.OrdinalIgnoreCase);
             var item = new ModItemViewModel(mod, picked, null);
-            item.Status = StatusOf(item, store, target);
+            item.Status = StatusOf(item, store, target, _settings.AutoUpdateMods);
             item.PickedChanged += () => OnPicked(item);
             (mod.Kind == ModKind.Car ? Cars : Features).Add(item);
         }
@@ -233,12 +469,13 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>What Play will do about this mod, when it's more than "nothing".</summary>
-    private static string? StatusOf(ModItemViewModel item, ModStore store, string? target)
+    private static string? StatusOf(ModItemViewModel item, ModStore store, string? target, bool autoUpdate)
     {
         if (!item.IsPicked) return null;
         string? installed = target != null ? Path.Combine(target, item.Entry.File) : null;
         if (installed != null && File.Exists(installed))
-            return PluginSync.Plan(target!, [item.Entry]).Install.Count == 0 ? null : "Updates when you play";
+            return PluginSync.Plan(target!, [item.Entry]).Install.Count == 0 ? null
+                : autoUpdate ? "Updates when you play" : $"Version {item.Entry.Version} is available";
         return store.Has(item.Entry) ? "Installs when you play" : "Downloads when you play";
     }
 
@@ -256,7 +493,7 @@ public partial class MainViewModel : ViewModelBase
             foreach (var other in all.Where(m => m.IsPicked && m.Entry.Requires.Contains(item.Entry.Id, StringComparer.OrdinalIgnoreCase)))
                 other.IsPicked = false;
         }
-        item.Status = StatusOf(item, Store(), OurFolder());
+        item.Status = StatusOf(item, Store(), OurFolder(), _settings.AutoUpdateMods);
         _settings.Picked = all.Where(m => m.IsPicked).Select(m => m.Entry.Id).ToList();
         _settings.Save();
         UpdateState();
@@ -345,9 +582,10 @@ public partial class MainViewModel : ViewModelBase
 
             var mods = PluginSync.Resolve(manifest, AllMods().Where(m => m.IsPicked).Select(m => m.Entry.Id));
             var store = Store();
+            var needed = PluginSync.Plan(OurFolder()!, mods, manifest.Mods, _settings.AutoUpdateMods).Install;
             for (int i = 0; i < mods.Count; i++)
             {
-                if (store.Has(mods[i])) continue;
+                if (store.Has(mods[i]) || !needed.Contains(mods[i])) continue;
                 StatusText = $"Downloading {mods[i].Name}…";
                 int n = i;
                 await store.EnsureAsync(manifest, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), ct);
@@ -355,7 +593,7 @@ public partial class MainViewModel : ViewModelBase
 
             StatusText = "Installing mods…";
             string target = OurFolder()!;
-            PluginSync.Apply(target, PluginSync.Plan(target, mods, manifest.Mods), store.PathOf);
+            PluginSync.Apply(target, PluginSync.Plan(target, mods, manifest.Mods, _settings.AutoUpdateMods), store.PathOf);
             DoorstopConfig.Write(game.Root, true);
 
             StatusText = "Starting Over The Hill…";
@@ -425,7 +663,7 @@ public partial class MainViewModel : ViewModelBase
 
     // ---------------------------------------------------------------- helpers
 
-    private async Task RunAsync(Func<CancellationToken, Task> work, string done)
+    private async Task RunAsync(Func<CancellationToken, Task> work, string done, bool launches = true)
     {
         Message = null;
         IsBusy = true;
@@ -435,12 +673,13 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             await work(CancellationToken.None);
-            await Task.Delay(1500); // leave "Starting…" up while Steam picks the launch up
+            if (launches) await Task.Delay(1500); // leave "Starting…" up while Steam picks the launch up
             ok = true;
         }
         catch (Exception e)
         {
-            Say(Capitalize(e.Message.TrimEnd('.')) + ".", error: true);
+            LauncherLog.Error("action", e);
+            Say(Capitalize(LauncherLog.Describe(e)) + ".", error: true);
         }
         finally
         {
@@ -450,6 +689,7 @@ public partial class MainViewModel : ViewModelBase
             BuildModList();
             Problems.Clear();
             DescribeGame();
+            DescribeModUpdates();
             await LoadImagesAsync();
             UpdateState();
             if (ok) Say(done);

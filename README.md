@@ -16,7 +16,23 @@ Salochi mods run on a fork of [OverTheHillPlus](https://github.com/legomaster188
 | **Mod loader** | If BepInEx isn't installed, **Play** installs the pinned build from the mod list. |
 | **Original OverTheHillPlus** | Its Core has the same plugin id as Salochi Core, so only one of them loads. The launcher detects it and won't launch modded until it's moved to `BepInEx/salochi-moved/<time>/`. Nothing is deleted. Other OTH mods get a warning and are left alone. |
 
-The launcher keeps its own files in `%LOCALAPPDATA%\Salochi\Launcher`: settings, and the downloaded mods in `store/`.
+The launcher keeps its own files in `%LOCALAPPDATA%\Salochi\Launcher`: `settings.json`, `launcher.log` (every error in
+full, for bug reports), the downloaded mods in `store/`, and downloaded launcher builds in `launcher/`.
+
+## Updates
+
+Both are on by default, and both can be switched off on the Game page.
+
+- **Mods:** when the launcher opens (and the game is closed), newer versions of the installed mods are downloaded and
+  installed. Players who start the game from Steam stay current as long as they open the launcher now and then.
+  Switched off, Play keeps the installed versions, and the Game page offers the updates.
+- **The launcher:** it reads `launcher.json` from the latest release. That's a small signed file whose format never
+  changes, so an old launcher can always find its update, even after the mod list's format moves on. A newer build is
+  downloaded into `launcher/`. The old launcher then starts the new one with `--finish-update` and exits. The new one
+  waits for it to close, takes its place (the old exe stays as `SalochiLauncher.exe.old` until the next start deletes
+  it) and starts. A single-file app reads parts of itself from its exe while it runs, which is why the old one never
+  replaces itself. If anything fails, the old launcher starts again and says why. Development builds (not published
+  single-file) never update themselves.
 
 ## Building
 
@@ -33,9 +49,11 @@ dotnet publish src/Salochi.Launcher -c Release # one self-contained SalochiLaunc
 The launcher reads `manifest.json` from the latest GitHub release of this repo (see [docs/manifest.md](docs/manifest.md)).
 
 ```bash
-# 1. build the mods in oth-cars (./deploy.sh, or dotnet build -c Release -p:NoDeploy=true per mod)
-# 2. the release folder: both lists (signed), the DLLs, the car pictures, the BepInEx zip
-python tools/make_manifest.py --cars ../oth-cars --out release/out --tag v0.1.0
+# 1. build the mods in oth-cars (./deploy.sh, or dotnet build -c Release -p:NoDeploy=true per mod), and the launcher
+#    (bump <Version> in Directory.Build.props when it changed)
+dotnet publish src/Salochi.Launcher -c Release
+# 2. the release folder: the lists and launcher.json (signed), the DLLs, the car pictures, the BepInEx zip, the exe
+python tools/make_manifest.py --cars ../oth-cars --out release/out --tag v0.1.0 --notes "What changed in the launcher."
 # 3. try it locally first (--no-launch does everything but start the game; --page cars|features|game)
 SalochiLauncher.exe --manifest release/out/manifest.json
 # 4. publish
@@ -61,7 +79,7 @@ Both lists are signed with the Salochi release key (see [docs/manifest.md](docs/
 | `tests/` | xUnit tests for the core. |
 | `tools/make_manifest.py` | Builds a release folder from the oth-cars builds. |
 | `tools/sign.cs` | The release key: make it, sign with it. |
-| `tools/make_logo.py` | Draws the mark (`Assets/logo.png`, `Assets/salochi.ico`). |
+| `tools/make_logo.py` | Draws the mark, a trail blaze with an S cut out of the paint (`Assets/logo.png`, `Assets/salochi.ico`). |
 | `src/Salochi.Launcher/Assets/Fonts` | Barlow and Barlow Condensed (SIL Open Font License, `OFL.txt`). |
 
 Licence: MIT (see [LICENSE](LICENSE)). Over The Hill is made by Funselektor Labs; this is an unofficial fan project.
