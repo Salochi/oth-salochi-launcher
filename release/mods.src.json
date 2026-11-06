@@ -14,15 +14,15 @@
       "build": "src/Core/bin/Release/net6.0/OTH.Core.dll"
     },
     {
-      "id": "fixes",
-      "name": "Salochi Fixes",
+      "id": "winchfix",
+      "name": "Winch Fix",
       "version": "1.0.0",
       "kind": "Feature",
       "requires": ["core"],
-      "description": "Fixes for bugs in the game. Multiplayer winch: a guest's winch no longer re-attaches right after unhooking. The host and the guests all need it.",
-      "file": "OTH.Fixes.dll",
+      "description": "Multiplayer: a guest's winch no longer re-attaches right after unhooking (a bug in the game). The host and the guests all need it.",
+      "file": "OTH.WinchFix.dll",
       "repo": "oth-salochi-fixes",
-      "build": "src/OTH.Fixes/bin/Release/net6.0/OTH.Fixes.dll"
+      "build": "src/OTH.WinchFix/bin/Release/net6.0/OTH.WinchFix.dll"
     },
     {
       "id": "accessories",
