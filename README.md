@@ -7,6 +7,15 @@ without any mods, and your mods stay installed for next time.
 Salochi mods run on a fork of [OverTheHillPlus](https://github.com/legomaster188/OverTheHillPlus-QoL) by legomaster188
 (MIT), on BepInEx 6 IL2CPP.
 
+Everything the launcher installs is open source:
+
+| Repo | What's in it |
+|---|---|
+| [oth-salochi-launcher](https://github.com/Salochi/oth-salochi-launcher) (this one) | The launcher, and the release tooling that builds and signs the mod list |
+| [oth-cars](https://github.com/Salochi/oth-cars) | Salochi Core, the Accessory Editor, and the cars: Tacoma (3rd gen) and the Baja Bug |
+| [oth-salochi-fixes](https://github.com/Salochi/oth-salochi-fixes) | Fixes for the game's own bugs: Winch Fix, Shift Fix |
+| [oth-car-toolkit](https://github.com/Salochi/oth-car-toolkit) | The tools that convert a 3D model into an Over The Hill car |
+
 ## Getting started
 
 1. Download `SalochiLauncher.exe` from the [latest release](https://github.com/Salochi/oth-salochi-launcher/releases/latest)
@@ -15,7 +24,7 @@ Salochi mods run on a fork of [OverTheHillPlus](https://github.com/legomaster188
    isn't code-signed yet (we're applying for free signing for open source, see the
    [code signing policy](CODE_SIGNING.md)), and Windows warns about any new program it hasn't seen many people
    download. Click **More info**, then **Run anyway**. Some antivirus tools flag unsigned programs that download files
-   the same way. The launcher's source is all here, and every mod it installs is checked against a signed list.
+   the same way. The launcher's source is all here, the mods' source is in the repos above, and every mod it installs is checked against a signed list.
 3. Pick your cars and features, and press **Play**. The first time, the launcher installs BepInEx (the mod loader).
    **The first modded start takes a few minutes**: BepInEx prepares the game before the menu appears, and the game can
    look frozen while it does. Leave it running. Later starts are quick.
