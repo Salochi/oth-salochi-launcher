@@ -5,7 +5,7 @@
     {
       "id": "core",
       "name": "Salochi Core",
-      "version": "1.5.0",
+      "version": "1.5.1",
       "kind": "Core",
       "required": true,
       "description": "The mod framework every Salochi mod runs on: the in-game MODS page, the mod network, and the car framework. Built on OverTheHillPlus by legomaster188.",
@@ -23,6 +23,17 @@
       "file": "OTH.WinchFix.dll",
       "repo": "oth-salochi-fixes",
       "build": "src/OTH.WinchFix/bin/Release/net6.0/OTH.WinchFix.dll"
+    },
+    {
+      "id": "shiftfix",
+      "name": "Shift Fix",
+      "version": "1.0.0",
+      "kind": "Feature",
+      "requires": ["core"],
+      "description": "Multiplayer: a guest's High/Low range switch no longer snaps straight back (a bug in the game). The host and the guests all need it.",
+      "file": "OTH.ShiftFix.dll",
+      "repo": "oth-salochi-fixes",
+      "build": "src/OTH.ShiftFix/bin/Release/net6.0/OTH.ShiftFix.dll"
     },
     {
       "id": "accessories",
