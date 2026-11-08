@@ -41,11 +41,24 @@
       "kind": "Car",
       "networked": true,
       "requires": ["core"],
-      "description": "A lifted Baja Bug, built on the Brick's wheels and axles.",
-      "credits": "Model: \"Volkswagen Beetle\" by yugengen (Sketchfab, CC BY 4.0).",
+      "description": "A lifted beetle on big tyres and long travel, built on the Brick's wheels and axles: the flat four out in a tube basket and rally lamps up front.",
+      "credits": "Model: \"VW Beetle\" by 3DDomino (Sketchfab, CC BY 4.0), made into a Baja and converted.",
       "file": "OTH.BajaBug.dll",
       "build": "src/Mods/BajaBug/bin/Release/net6.0/OTH.BajaBug.dll",
       "image": "src/Mods/BajaBug/Assets/bajabug_icon.png"
+    },
+    {
+      "id": "tacoma3",
+      "name": "Tacoma TRD Pro (3rd gen)",
+      "version": "0.1.0",
+      "kind": "Car",
+      "networked": true,
+      "requires": ["core"],
+      "description": "A 2016-2023 double-cab Tacoma TRD Pro on the Burro: 3.5 V6, 18-inch wheels on 32-inch mud-terrains, and 33 / 35-inch tyre upgrades in the garage.",
+      "credits": "Model: \"Toyota Tacoma TRD\" by LagzDesign (Sketchfab, CC BY 4.0), refined and converted.",
+      "file": "OTH.Tacoma3.dll",
+      "build": "src/Mods/Tacoma3/bin/Release/net6.0/OTH.Tacoma3.dll",
+      "image": "src/Mods/Tacoma3/Assets/tacoma3_icon.png"
     }
   ]
 }
