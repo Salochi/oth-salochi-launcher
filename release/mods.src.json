@@ -27,7 +27,7 @@
     {
       "id": "shiftfix",
       "name": "Shift Fix",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "kind": "Feature",
       "requires": ["core"],
       "description": "Multiplayer: a guest's High/Low range switch no longer snaps straight back (a bug in the game). The host and the guests all need it.",
