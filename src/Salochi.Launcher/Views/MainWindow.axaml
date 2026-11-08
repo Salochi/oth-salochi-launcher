@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Salochi.Launcher.ViewModels"
+        xmlns:v="using:Salochi.Launcher.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="980" d:DesignHeight="660"
@@ -89,7 +90,10 @@
                                             </Panel>
                                         </Border>
                                         <StackPanel Grid.Row="1" Margin="18,14,18,18" Spacing="4">
-                                            <TextBlock Classes="name" Text="{Binding Name}" />
+                                            <!-- a name longer than the tile glides to its end and back -->
+                                            <v:Marquee>
+                                                <TextBlock Classes="name" Text="{Binding Name}" />
+                                            </v:Marquee>
                                             <TextBlock Classes="quiet" Text="{Binding Description}" TextWrapping="Wrap" />
                                             <TextBlock Classes="quiet small" Text="{Binding Credits}" IsVisible="{Binding HasCredits}"
                                                        TextWrapping="Wrap" Margin="0,4,0,0" />
