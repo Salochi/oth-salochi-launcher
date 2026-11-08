@@ -38,7 +38,7 @@
     {
       "id": "accessories",
       "name": "Accessory Editor",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "kind": "Feature",
       "requires": ["core"],
       "description": "Press F8 in the garage to stack accessories, then move, turn and resize each one. You can also set wheel size and offset. Works on every framework car. In multiplayer, other players with the editor see your changes, and you see theirs.",
