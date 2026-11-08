@@ -84,6 +84,37 @@ public sealed class ModTests : IDisposable
     }
 
     [Fact]
+    public void Update_ReplacesOnlyTheOutdatedModAndKeepsTheRest()
+    {
+        // 0.1.1's bug: updating one mod in the background removed every other installed mod
+        var m = Manifest.Parse(ManifestJson(), Release);
+        string store = Path.Combine(_dir, "store"), target = Path.Combine(_dir, "plugins", "Salochi");
+        Directory.CreateDirectory(store);
+        File.WriteAllText(Path.Combine(store, "OTH.Core.dll"), "core");
+        File.WriteAllText(Path.Combine(store, "OTH.Accessories.dll"), "acc");
+        File.WriteAllText(Path.Combine(store, "OTH.BajaBug.dll"), "bug");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "OTH.Core.dll"), "core");
+        File.WriteAllText(Path.Combine(target, "OTH.Accessories.dll"), "acc-old"); // the one update
+        File.WriteAllText(Path.Combine(target, "OTH.BajaBug.dll"), "bug");
+        File.WriteAllText(Path.Combine(target, "OTH.OldCar.dll"), "old"); // from an earlier release, still in the receipt
+        File.WriteAllText(Path.Combine(target, ".salochi-installed.json"), "[\"OTH.BajaBug.dll\",\"OTH.Core.dll\",\"OTH.OldCar.dll\",\"OTH.Accessories.dll\"]");
+
+        Assert.Equal(["accessories"], PluginSync.Outdated(m, target).Select(x => x.Id));
+        var plan = PluginSync.UpdatePlan(target, m);
+        Assert.Equal(["accessories"], plan.Install.Select(x => x.Id));
+        Assert.Empty(plan.Remove);
+        PluginSync.Apply(target, plan, e => Path.Combine(store, e.File));
+
+        Assert.Equal(["OTH.Accessories.dll", "OTH.BajaBug.dll", "OTH.Core.dll", "OTH.OldCar.dll"], Directory.GetFiles(target, "*.dll").Select(Path.GetFileName).Order());
+        Assert.Equal("acc", File.ReadAllText(Path.Combine(target, "OTH.Accessories.dll")));
+        Assert.Empty(PluginSync.Outdated(m, target));
+        // the receipt still lists everything, so a later Play can still remove the dropped one
+        Assert.Equal(["OTH.Accessories.dll", "OTH.BajaBug.dll", "OTH.Core.dll", "OTH.OldCar.dll"], PluginSync.ReadReceipt(target));
+        Assert.Equal(["OTH.OldCar.dll"], PluginSync.Plan(target, PluginSync.Resolve(m, ["accessories", "bajabug"]), m.Mods).Remove);
+    }
+
+    [Fact]
     public void Sync_RemovesAModALaterReleaseDropped()
     {
         string store = Path.Combine(_dir, "store"), target = Path.Combine(_dir, "plugins", "Salochi");

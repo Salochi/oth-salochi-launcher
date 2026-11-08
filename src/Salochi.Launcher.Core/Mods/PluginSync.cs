@@ -6,6 +6,9 @@ namespace Salochi.Launcher.Core.Mods;
 public sealed record SyncPlan(IReadOnlyList<ModEntry> Install, IReadOnlyList<string> Remove, IReadOnlyList<ModEntry> Keep)
 {
     public bool IsEmpty => Install.Count == 0 && Remove.Count == 0;
+    /// <summary>Files to keep in the receipt although this plan doesn't touch them (an update keeps what the last full
+    /// sync installed, so a later Play still removes a DLL a release dropped).</summary>
+    public IReadOnlyList<string> AlsoInReceipt { get; init; } = [];
 }
 
 /// <summary>
@@ -62,6 +65,26 @@ public static class PluginSync
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return new SyncPlan(install, remove, keep);
+    }
+
+    /// <summary>
+    /// Updates only: every installed mod whose file isn't the manifest's version is replaced, everything else stays
+    /// exactly as it is. Nothing is removed, so an update can't take mods out (<see cref="Plan"/> would: it makes the
+    /// folder hold exactly the mods it's given, and an update gives it only the outdated ones).
+    /// </summary>
+    public static SyncPlan UpdatePlan(string targetDir, Manifest manifest)
+    {
+        var install = new List<ModEntry>();
+        var keep = new List<ModEntry>();
+        foreach (var m in manifest.Mods)
+        {
+            string p = Path.Combine(targetDir, m.File);
+            if (!File.Exists(p)) continue;
+            (IsCurrent(p, m) ? keep : install).Add(m);
+        }
+        var listed = new HashSet<string>(install.Concat(keep).Select(m => m.File), StringComparer.OrdinalIgnoreCase);
+        var receipt = ReadReceipt(targetDir).Where(f => !listed.Contains(f) && File.Exists(Path.Combine(targetDir, f))).ToList();
+        return new SyncPlan(install, [], keep) { AlsoInReceipt = receipt };
     }
 
     /// <summary>The installed mods whose file isn't the manifest's version: the updates waiting.</summary>
@@ -122,7 +145,7 @@ public static class PluginSync
         TryDeleteDir(backup);
 
         CoreQueue.Drop(targetDir, plan.Install.Select(m => m.File).Concat(plan.Remove));
-        WriteReceipt(targetDir, plan.Install.Concat(plan.Keep).Select(m => m.File));
+        WriteReceipt(targetDir, plan.Install.Concat(plan.Keep).Select(m => m.File).Concat(plan.AlsoInReceipt));
     }
 
     // ---------------------------------------------------------------- the receipt

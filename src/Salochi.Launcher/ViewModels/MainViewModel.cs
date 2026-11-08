@@ -365,7 +365,9 @@ public partial class MainViewModel : ViewModelBase
             await store.EnsureAsync(manifest, mods[i], new Progress<double>(p => Progress = (n + p) / mods.Count), CancellationToken.None);
         }
         string target = FolderOf(game);
-        PluginSync.Apply(target, PluginSync.Plan(target, mods, mods), store.PathOf);
+        // Only the outdated files change. (Plan(target, mods, mods) made the folder hold just the outdated mods, so
+        // updating one mod removed all the others: 0.1.1, fixed in 0.1.2.)
+        PluginSync.Apply(target, PluginSync.UpdatePlan(target, manifest), store.PathOf);
     }
 
     [RelayCommand]

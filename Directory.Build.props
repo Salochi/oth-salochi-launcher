@@ -3,7 +3,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Authors>Salochi</Authors>
     <Product>Salochi Launcher</Product>
     <!-- The exe's product version is exactly <Version> (no "+<commit>"): SignPath checks it against the release. -->
