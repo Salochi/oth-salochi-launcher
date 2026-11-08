@@ -5,7 +5,7 @@
     {
       "id": "core",
       "name": "Salochi Core",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "kind": "Core",
       "required": true,
       "description": "The mod framework every Salochi mod runs on: the in-game MODS page, the mod network, and the car framework. Built on OverTheHillPlus by legomaster188.",
