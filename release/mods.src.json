@@ -5,7 +5,7 @@
     {
       "id": "core",
       "name": "Salochi Core",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "kind": "Core",
       "required": true,
       "description": "The mod framework every Salochi mod runs on: the in-game MODS page, the mod network, and the car framework. Built on OverTheHillPlus by legomaster188.",
@@ -70,6 +70,19 @@
       "file": "OTH.Tacoma3.dll",
       "build": "src/Mods/Tacoma3/bin/Release/net6.0/OTH.Tacoma3.dll",
       "image": "src/Mods/Tacoma3/Assets/tacoma3_icon.png"
+    },
+    {
+      "id": "4runner4",
+      "name": "4Runner (4th gen)",
+      "version": "0.1.0",
+      "kind": "Car",
+      "networked": true,
+      "requires": ["core"],
+      "description": "A lifted 2006-2009 4Runner Limited on the Burro: 4.7 V8, full-time four-wheel drive, 33-inch mud-terrains, running boards and a roof rack.",
+      "credits": "Model: \"Toyota 4Runner\" by sadiqminhas (Sketchfab, CC BY 4.0), prepared and converted.",
+      "file": "OTH.FourRunner.dll",
+      "build": "src/Mods/FourRunner/bin/Release/net6.0/OTH.FourRunner.dll",
+      "image": "src/Mods/FourRunner/Assets/4runner4_icon.png"
     }
   ]
 }
