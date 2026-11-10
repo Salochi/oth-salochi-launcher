@@ -12,7 +12,7 @@ Everything the launcher installs is open source:
 | Repo | What's in it |
 |---|---|
 | [oth-salochi-launcher](https://github.com/Salochi/oth-salochi-launcher) (this one) | The launcher, and the release tooling that builds and signs the mod list |
-| [oth-cars](https://github.com/Salochi/oth-cars) | Salochi Core, the Accessory Editor, and the cars: Tacoma (3rd gen) and the Baja Bug |
+| [oth-cars](https://github.com/Salochi/oth-cars) | Salochi Core, the Accessory Editor, and the cars: Tacoma (3rd gen), 4Runner (4th gen) and the Baja Bug |
 | [oth-salochi-fixes](https://github.com/Salochi/oth-salochi-fixes) | Fixes for the game's own bugs: Winch Fix, Shift Fix |
 | [oth-car-toolkit](https://github.com/Salochi/oth-car-toolkit) | The tools that convert a 3D model into an Over The Hill car |
 
@@ -30,6 +30,23 @@ Everything the launcher installs is open source:
    look frozen while it does. Leave it running. Later starts are quick.
 
 To play without mods, use **Play without mods**. Nothing gets uninstalled, and **Play** brings the mods back.
+
+## Multiplayer
+
+Everyone in a session needs the same mods, at the same versions. The launcher updates them when it opens, so have
+everyone open it before you play. The modded cars and accessories only sync between players who have the mods.
+
+**Not everything has been tested in multiplayer yet.** So far it has been tested with two players, one hosting and
+one joining:
+
+| | |
+|---|---|
+| **Tested** | Winch Fix, Shift Fix (High/Low range for the joining player), the Accessory Editor's stacks, fits and wheel settings, the 3rd gen Tacoma (tyre size included) and the Baja Bug |
+| **Not tested yet** | The 4Runner with other players, sessions with more than two players |
+| **Known issue** | When the players swapped and the other one hosted, the joining player's game rubber-banded badly. We don't know yet whether that's the mods or the connection. |
+
+If something doesn't sync or breaks in multiplayer, please [open an issue](https://github.com/Salochi/oth-salochi-launcher/issues)
+and attach `launcher.log` plus the game's `BepInEx/LogOutput.log` from every player.
 
 ## What it does to your game folder
 
