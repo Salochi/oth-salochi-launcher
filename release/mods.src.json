@@ -74,7 +74,7 @@
     {
       "id": "4runner4",
       "name": "4Runner (4th gen)",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "Car",
       "networked": true,
       "requires": ["core"],
